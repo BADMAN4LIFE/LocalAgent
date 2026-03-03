@@ -295,11 +295,15 @@ mod tests {
             .insert("task_a".to_string(), task_summary);
         by_model.insert("m1".to_string(), model_summary);
 
-        let mut model2_summary = ModelSummary::default();
-        model2_summary.skipped = 1;
-        let mut task2_summary = TaskSummary::default();
-        task2_summary.skipped = 1;
-        task2_summary.runs = vec![run3.clone()];
+        let task2_summary = TaskSummary {
+            skipped: 1,
+            runs: vec![run3.clone()],
+            ..TaskSummary::default()
+        };
+        let mut model2_summary = ModelSummary {
+            skipped: 1,
+            ..ModelSummary::default()
+        };
         model2_summary
             .tasks
             .insert("task_b".to_string(), task2_summary);

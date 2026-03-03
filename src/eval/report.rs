@@ -144,11 +144,15 @@ mod tests {
             verifier: None,
         };
 
-        let mut task_summary = TaskSummary::default();
-        task_summary.failed = 1;
-        task_summary.runs = vec![run.clone()];
-        let mut model_summary = ModelSummary::default();
-        model_summary.failed = 1;
+        let task_summary = TaskSummary {
+            failed: 1,
+            runs: vec![run.clone()],
+            ..TaskSummary::default()
+        };
+        let mut model_summary = ModelSummary {
+            failed: 1,
+            ..ModelSummary::default()
+        };
         model_summary
             .tasks
             .insert("task_a".to_string(), task_summary);

@@ -98,16 +98,28 @@ impl ModelProvider for ScriptedProvider {
     }
 }
 
-fn build_agent<P: ModelProvider + 'static>(
-    provider: P,
-    workdir: &Path,
+struct AgentBuildInput {
     tools: Vec<ToolDef>,
     gate: Box<dyn ToolGate>,
     allow_shell: bool,
     allow_write: bool,
     max_steps: usize,
     events: Arc<Mutex<Vec<Event>>>,
+}
+
+fn build_agent<P: ModelProvider + 'static>(
+    provider: P,
+    workdir: &Path,
+    input: AgentBuildInput,
 ) -> Agent<P> {
+    let AgentBuildInput {
+        tools,
+        gate,
+        allow_shell,
+        allow_write,
+        max_steps,
+        events,
+    } = input;
     Agent {
         provider,
         model: "mock-model".to_string(),
@@ -237,12 +249,14 @@ async fn ci_unknown_tool_self_corrects_or_fails_clear() {
     let mut agent = build_agent(
         provider,
         tmp.path(),
-        builtin_tools_enabled(false, false),
-        Box::new(NoGate::new()),
-        false,
-        false,
-        6,
-        events.clone(),
+        AgentBuildInput {
+            tools: builtin_tools_enabled(false, false),
+            gate: Box::new(NoGate::new()),
+            allow_shell: false,
+            allow_write: false,
+            max_steps: 6,
+            events: events.clone(),
+        },
     );
     let outcome = agent.run("test", Vec::new(), Vec::new()).await;
 
@@ -286,12 +300,14 @@ async fn ci_invalid_args_repairs_within_bound() {
     let mut agent = build_agent(
         provider,
         tmp.path(),
-        builtin_tools_enabled(false, false),
-        Box::new(NoGate::new()),
-        false,
-        false,
-        6,
-        events.clone(),
+        AgentBuildInput {
+            tools: builtin_tools_enabled(false, false),
+            gate: Box::new(NoGate::new()),
+            allow_shell: false,
+            allow_write: false,
+            max_steps: 6,
+            events: events.clone(),
+        },
     );
     let outcome = agent.run("test", Vec::new(), Vec::new()).await;
 
@@ -330,12 +346,14 @@ async fn ci_multi_step_tool_chain_completes() {
     let mut agent = build_agent(
         provider,
         tmp.path(),
-        builtin_tools_enabled(false, false),
-        Box::new(NoGate::new()),
-        false,
-        false,
-        6,
-        events,
+        AgentBuildInput {
+            tools: builtin_tools_enabled(false, false),
+            gate: Box::new(NoGate::new()),
+            allow_shell: false,
+            allow_write: false,
+            max_steps: 6,
+            events,
+        },
     );
     let outcome = agent.run("test", Vec::new(), Vec::new()).await;
 
@@ -385,12 +403,14 @@ async fn ci_repeat_guard_blocks_repeated_failed_calls() {
     let mut agent = build_agent(
         provider,
         tmp.path(),
-        builtin_tools_enabled(false, false),
-        Box::new(NoGate::new()),
-        false,
-        false,
-        8,
-        events.clone(),
+        AgentBuildInput {
+            tools: builtin_tools_enabled(false, false),
+            gate: Box::new(NoGate::new()),
+            allow_shell: false,
+            allow_write: false,
+            max_steps: 8,
+            events: events.clone(),
+        },
     );
     let outcome = agent.run("test", Vec::new(), Vec::new()).await;
 
@@ -425,12 +445,14 @@ async fn ci_trust_gate_blocks_shell_without_allow_shell() {
     let mut agent = build_agent(
         provider,
         tmp.path(),
-        builtin_tools_enabled(false, true),
-        Box::new(gate),
-        false,
-        false,
-        4,
-        events.clone(),
+        AgentBuildInput {
+            tools: builtin_tools_enabled(false, true),
+            gate: Box::new(gate),
+            allow_shell: false,
+            allow_write: false,
+            max_steps: 4,
+            events: events.clone(),
+        },
     );
     let outcome = agent.run("test", Vec::new(), Vec::new()).await;
 

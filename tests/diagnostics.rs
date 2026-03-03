@@ -28,6 +28,14 @@ fn diag(
 
 #[test]
 fn sort_diagnostics_is_predictable_and_stable() {
+    type OrderedDiag<'a> = (
+        &'a str,
+        Severity,
+        Option<&'a str>,
+        Option<u32>,
+        Option<u32>,
+        Option<&'a str>,
+    );
     let mut diags = vec![
         diag(
             "Z_LAST",
@@ -69,14 +77,7 @@ fn sort_diagnostics_is_predictable_and_stable() {
 
     sort_diagnostics(&mut diags);
 
-    let ordered: Vec<(
-        &str,
-        Severity,
-        Option<&str>,
-        Option<u32>,
-        Option<u32>,
-        Option<&str>,
-    )> = diags
+    let ordered: Vec<OrderedDiag<'_>> = diags
         .iter()
         .map(|d| {
             (

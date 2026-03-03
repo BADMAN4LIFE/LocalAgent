@@ -285,7 +285,7 @@ mod tests {
         )
         .expect("agents");
         let g = resolve_project_guidance(
-            &tmp.path().to_path_buf(),
+            tmp.path(),
             ProjectGuidanceLimits {
                 max_total_bytes: 40,
             },
