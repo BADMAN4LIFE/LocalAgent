@@ -970,6 +970,15 @@ pub(crate) struct RunArgs {
     #[arg(long)]
     pub(crate) temperature: Option<f32>,
 
+    #[arg(long)]
+    pub(crate) top_p: Option<f32>,
+
+    #[arg(long)]
+    pub(crate) max_tokens: Option<u32>,
+
+    #[arg(long)]
+    pub(crate) seed: Option<u64>,
+
     #[arg(long, default_value_t = 20)]
     pub(crate) max_steps: usize,
 

@@ -112,6 +112,9 @@ fn build_agent<P: ModelProvider + 'static>(
         provider,
         model: "mock-model".to_string(),
         temperature: None,
+        top_p: None,
+        max_tokens: None,
+        seed: None,
         tools,
         max_steps,
         tool_rt: ToolRuntime {

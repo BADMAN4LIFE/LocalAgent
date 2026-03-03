@@ -230,6 +230,9 @@ pub struct Agent<P: ModelProvider> {
     pub provider: P,
     pub model: String,
     pub temperature: Option<f32>,
+    pub top_p: Option<f32>,
+    pub max_tokens: Option<u32>,
+    pub seed: Option<u64>,
     pub tools: Vec<ToolDef>,
     pub max_steps: usize,
     pub tool_rt: ToolRuntime,
@@ -1035,6 +1038,9 @@ Fallback when native tool calls are unavailable:\n\
                     Some(tools_sorted)
                 },
                 temperature: self.temperature,
+                top_p: self.top_p,
+                max_tokens: self.max_tokens,
+                seed: self.seed,
             };
             let request_context_chars = context_size_chars(&req.messages);
             let resp_result = self.execute_model_request(&run_id, step as u32, req).await;

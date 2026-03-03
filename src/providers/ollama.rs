@@ -60,7 +60,14 @@ struct OllamaRequest {
 
 #[derive(Debug, Serialize)]
 struct OllamaOptions {
-    temperature: f32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    temperature: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    top_p: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    num_predict: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    seed: Option<u64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -420,6 +427,9 @@ fn drain_json_lines(buf: &mut String) -> Vec<String> {
 
 fn to_request(req: GenerateRequest, stream: bool) -> OllamaRequest {
     let temperature = req.temperature;
+    let top_p = req.top_p;
+    let max_tokens = req.max_tokens;
+    let seed = req.seed;
     let tools = build_tool_envelopes(req.tools);
     let messages = req
         .messages
@@ -443,7 +453,20 @@ fn to_request(req: GenerateRequest, stream: bool) -> OllamaRequest {
         model: req.model,
         messages,
         tools,
-        options: temperature.map(|temperature| OllamaOptions { temperature }),
+        options: if temperature.is_some()
+            || top_p.is_some()
+            || max_tokens.is_some()
+            || seed.is_some()
+        {
+            Some(OllamaOptions {
+                temperature,
+                top_p,
+                num_predict: max_tokens,
+                seed,
+            })
+        } else {
+            None
+        },
         stream,
     }
 }
@@ -600,13 +623,16 @@ mod tests {
                 messages: Vec::new(),
                 tools: None,
                 temperature: Some(0.33),
+                top_p: None,
+                max_tokens: None,
+                seed: None,
             },
             false,
         );
         let temp = payload
             .options
             .as_ref()
-            .map(|o| o.temperature)
+            .and_then(|o| o.temperature)
             .expect("temperature set");
         assert!((temp - 0.33).abs() < f32::EPSILON);
     }
@@ -619,9 +645,32 @@ mod tests {
                 messages: Vec::new(),
                 tools: None,
                 temperature: None,
+                top_p: None,
+                max_tokens: None,
+                seed: None,
             },
             false,
         );
         assert!(payload.options.is_none());
+    }
+
+    #[test]
+    fn to_request_sets_other_sampling_options_when_present() {
+        let payload = to_request(
+            GenerateRequest {
+                model: "m".to_string(),
+                messages: Vec::new(),
+                tools: None,
+                temperature: None,
+                top_p: Some(0.9),
+                max_tokens: Some(128),
+                seed: Some(7),
+            },
+            false,
+        );
+        let options = payload.options.expect("options set");
+        assert_eq!(options.top_p, Some(0.9));
+        assert_eq!(options.num_predict, Some(128));
+        assert_eq!(options.seed, Some(7));
     }
 }

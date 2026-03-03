@@ -142,6 +142,9 @@ pub(crate) async fn ensure_orchestrator_qualified<P: ModelProvider>(
             }],
             tools: Some(vec![list_dir_tool.clone()]),
             temperature: None,
+            top_p: None,
+            max_tokens: None,
+            seed: None,
         };
         let resp = provider
             .generate(req)

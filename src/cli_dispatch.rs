@@ -29,6 +29,7 @@ pub(crate) async fn run_cli() -> anyhow::Result<()> {
     if cli.run.no_limits && !cli.run.unsafe_mode {
         return Err(anyhow!("--no-limits requires --unsafe"));
     }
+    validate_sampling_args(&cli.run)?;
 
     if cli.run.unsafe_mode {
         eprintln!("WARN: unsafe mode enabled");
@@ -526,5 +527,17 @@ pub(crate) async fn run_cli() -> anyhow::Result<()> {
         }
     }
 
+    Ok(())
+}
+
+pub(crate) fn validate_sampling_args(run: &RunArgs) -> anyhow::Result<()> {
+    if let Some(top_p) = run.top_p {
+        if !(top_p > 0.0 && top_p <= 1.0) {
+            return Err(anyhow!("--top-p must be > 0 and <= 1"));
+        }
+    }
+    if matches!(run.max_tokens, Some(0)) {
+        return Err(anyhow!("--max-tokens must be > 0"));
+    }
     Ok(())
 }

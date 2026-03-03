@@ -52,6 +52,12 @@ struct OpenAiRequest {
     tools: Option<Vec<OpenAiToolEnvelope>>,
     tool_choice: String,
     temperature: f32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    top_p: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    max_tokens: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    seed: Option<u64>,
     stream: bool,
 }
 
@@ -504,6 +510,9 @@ fn to_request(req: GenerateRequest, stream: bool) -> OpenAiRequest {
         tools,
         tool_choice: "auto".to_string(),
         temperature: req.temperature.unwrap_or(0.2),
+        top_p: req.top_p,
+        max_tokens: req.max_tokens,
+        seed: req.seed,
         stream,
     }
 }
@@ -757,6 +766,9 @@ mod tests {
                 messages: Vec::new(),
                 tools: None,
                 temperature: Some(0.55),
+                top_p: None,
+                max_tokens: None,
+                seed: None,
             },
             false,
         );
@@ -771,9 +783,31 @@ mod tests {
                 messages: Vec::new(),
                 tools: None,
                 temperature: None,
+                top_p: None,
+                max_tokens: None,
+                seed: None,
             },
             false,
         );
         assert!((payload.temperature - 0.2).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn to_request_passes_through_sampling_controls_when_present() {
+        let payload = to_request(
+            GenerateRequest {
+                model: "m".to_string(),
+                messages: Vec::new(),
+                tools: None,
+                temperature: Some(0.3),
+                top_p: Some(0.8),
+                max_tokens: Some(256),
+                seed: Some(42),
+            },
+            false,
+        );
+        assert_eq!(payload.top_p, Some(0.8));
+        assert_eq!(payload.max_tokens, Some(256));
+        assert_eq!(payload.seed, Some(42));
     }
 }

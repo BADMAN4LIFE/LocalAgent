@@ -673,6 +673,9 @@ pub(crate) async fn run_agent_with_ui<P: ModelProvider>(
         provider,
         model: worker_model.clone(),
         temperature: args.temperature,
+        top_p: args.top_p,
+        max_tokens: args.max_tokens,
+        seed: args.seed,
         tools: all_tools,
         max_steps: args.max_steps,
         tool_rt: ToolRuntime {

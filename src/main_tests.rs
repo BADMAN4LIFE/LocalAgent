@@ -696,6 +696,31 @@ fn protocol_hint_ignores_non_protocol_errors() {
     assert!(super::runtime_config::protocol_remediation_hint("provider timeout").is_none());
 }
 
+#[test]
+fn sampling_validation_rejects_invalid_top_p() {
+    let mut run = default_run_args();
+    run.top_p = Some(0.0);
+    let err = super::cli_dispatch::validate_sampling_args(&run).expect_err("must fail");
+    assert!(err.to_string().contains("--top-p"));
+}
+
+#[test]
+fn sampling_validation_rejects_zero_max_tokens() {
+    let mut run = default_run_args();
+    run.max_tokens = Some(0);
+    let err = super::cli_dispatch::validate_sampling_args(&run).expect_err("must fail");
+    assert!(err.to_string().contains("--max-tokens"));
+}
+
+#[test]
+fn sampling_validation_accepts_valid_values() {
+    let mut run = default_run_args();
+    run.top_p = Some(0.9);
+    run.max_tokens = Some(256);
+    run.seed = Some(123);
+    super::cli_dispatch::validate_sampling_args(&run).expect("valid");
+}
+
 fn default_run_args() -> super::RunArgs {
     super::RunArgs {
         provider: None,
@@ -703,6 +728,9 @@ fn default_run_args() -> super::RunArgs {
         model: None,
 
         temperature: None,
+        top_p: None,
+        max_tokens: None,
+        seed: None,
 
         base_url: None,
 

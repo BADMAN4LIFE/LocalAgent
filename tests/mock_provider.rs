@@ -7,6 +7,9 @@ fn req_with_user(content: &str) -> GenerateRequest {
     GenerateRequest {
         model: "mock-model".to_string(),
         temperature: None,
+        top_p: None,
+        max_tokens: None,
+        seed: None,
         messages: vec![Message {
             role: Role::User,
             content: Some(content.to_string()),

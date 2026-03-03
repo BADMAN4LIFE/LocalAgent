@@ -487,6 +487,9 @@ async fn call_assist_model(
         ],
         tools: None,
         temperature: cli_run.temperature,
+        top_p: cli_run.top_p,
+        max_tokens: cli_run.max_tokens,
+        seed: cli_run.seed,
     };
 
     let resp = match provider_kind {
