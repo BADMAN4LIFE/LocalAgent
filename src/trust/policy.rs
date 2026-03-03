@@ -221,6 +221,26 @@ impl Policy {
                     },
                 },
                 CompiledRule {
+                    tool_pattern: "glob".to_string(),
+                    tool: ToolMatcher::Exact("glob".to_string()),
+                    decision: PolicyDecision::Allow,
+                    when: Vec::new(),
+                    reason: None,
+                    source: RuleSource {
+                        path: "safe_default".to_string(),
+                    },
+                },
+                CompiledRule {
+                    tool_pattern: "grep".to_string(),
+                    tool: ToolMatcher::Exact("grep".to_string()),
+                    decision: PolicyDecision::Allow,
+                    when: Vec::new(),
+                    reason: None,
+                    source: RuleSource {
+                        path: "safe_default".to_string(),
+                    },
+                },
+                CompiledRule {
                     tool_pattern: "shell".to_string(),
                     tool: ToolMatcher::Exact("shell".to_string()),
                     decision: PolicyDecision::RequireApproval,
@@ -347,7 +367,7 @@ impl Policy {
 }
 
 pub fn safe_default_policy_repr() -> &'static str {
-    "version:1;default:deny;rules:[allow list_dir,allow read_file,require_approval shell,require_approval write_file,require_approval apply_patch]"
+    "version:1;default:deny;rules:[allow list_dir,allow read_file,allow glob,allow grep,require_approval shell,require_approval write_file,require_approval apply_patch]"
 }
 
 #[derive(Default)]
@@ -778,5 +798,27 @@ taint:
             Some("**/.env")
         );
         assert_eq!(policy.taint_file_match("project/src/lib.rs"), None);
+    }
+
+    #[test]
+    fn safe_default_allows_glob_and_grep() {
+        let policy = Policy::safe_default();
+        assert_eq!(
+            policy
+                .evaluate("glob", &json!({"pattern":"src/**/*.rs"}))
+                .decision,
+            PolicyDecision::Allow
+        );
+        assert_eq!(
+            policy.evaluate("grep", &json!({"pattern":"TODO"})).decision,
+            PolicyDecision::Allow
+        );
+    }
+
+    #[test]
+    fn safe_default_policy_repr_includes_glob_and_grep_in_order() {
+        let repr = super::safe_default_policy_repr();
+        let expected = "version:1;default:deny;rules:[allow list_dir,allow read_file,allow glob,allow grep,require_approval shell,require_approval write_file,require_approval apply_patch]";
+        assert_eq!(repr, expected);
     }
 }

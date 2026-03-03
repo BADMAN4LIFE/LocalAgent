@@ -274,4 +274,46 @@ rules:
 
         assert!(matches!(decision, GateDecision::RequireApproval { .. }));
     }
+
+    #[test]
+    fn trust_on_without_policy_uses_safe_default_and_allows_glob_and_grep() {
+        let tmp = tempdir().expect("tempdir");
+        let paths = store::resolve_state_paths(tmp.path(), None, None, None, None);
+
+        let mut args = base_args();
+        args.trust = TrustMode::On;
+
+        let build = build_gate(&args, &paths).expect("build gate");
+        assert_eq!(build.policy_source, "default");
+        let mut gate = build.gate;
+
+        let glob_call = ToolCall {
+            id: "tc_glob".to_string(),
+            name: "glob".to_string(),
+            arguments: json!({"pattern":"src/**/*.rs"}),
+        };
+        let grep_call = ToolCall {
+            id: "tc_grep".to_string(),
+            name: "grep".to_string(),
+            arguments: json!({"pattern":"TODO"}),
+        };
+
+        let glob_decision = gate.decide(&gate_ctx(tmp.path()), &glob_call);
+        let grep_decision = gate.decide(&gate_ctx(tmp.path()), &grep_call);
+
+        match glob_decision {
+            GateDecision::Allow { source, reason, .. } => {
+                assert_eq!(source.as_deref(), Some("safe_default"));
+                assert!(reason.is_none());
+            }
+            _ => panic!("expected allow for glob"),
+        }
+        match grep_decision {
+            GateDecision::Allow { source, reason, .. } => {
+                assert_eq!(source.as_deref(), Some("safe_default"));
+                assert!(reason.is_none());
+            }
+            _ => panic!("expected allow for grep"),
+        }
+    }
 }

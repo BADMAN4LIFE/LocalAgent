@@ -1,7 +1,10 @@
-use std::path::PathBuf;
+use std::collections::BTreeSet;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use clap::ValueEnum;
+use globset::Glob;
+use regex::RegexBuilder;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
@@ -50,7 +53,21 @@ pub struct ToolResultMeta {
     pub source: String,
     pub execution_target: String,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub warnings: Option<Vec<ToolWarningDetail>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub warnings_max: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub warnings_truncated: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub docker: Option<DockerMeta>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ToolWarningDetail {
+    pub code: String,
+    pub path: String,
+    pub target: String,
+    pub reason: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -85,8 +102,11 @@ pub enum ToolErrorCode {
     ToolArgsInvalid,
     ToolUnknown,
     ToolPathDenied,
+    PathOutOfScope,
     ToolDisabled,
     ToolArgsMalformedJson,
+    InvalidPattern,
+    IoError,
 }
 
 impl ToolErrorCode {
@@ -95,8 +115,11 @@ impl ToolErrorCode {
             Self::ToolArgsInvalid => "tool_args_invalid",
             Self::ToolUnknown => "tool_unknown",
             Self::ToolPathDenied => "tool_path_denied",
+            Self::PathOutOfScope => "path_out_of_scope",
             Self::ToolDisabled => "tool_disabled",
             Self::ToolArgsMalformedJson => "tool_args_malformed_json",
+            Self::InvalidPattern => "invalid_pattern",
+            Self::IoError => "io_error",
         }
     }
 }
@@ -126,7 +149,7 @@ struct ToolExecution {
 
 pub fn tool_side_effects(tool_name: &str) -> SideEffects {
     match tool_name {
-        "list_dir" | "read_file" => SideEffects::FilesystemRead,
+        "list_dir" | "read_file" | "glob" | "grep" => SideEffects::FilesystemRead,
         "shell" => SideEffects::ShellExec,
         "write_file" | "apply_patch" => SideEffects::FilesystemWrite,
         _ if tool_name.starts_with("mcp.playwright.") => SideEffects::Browser,
@@ -154,6 +177,35 @@ pub fn builtin_tools_enabled(enable_write_tools: bool, enable_shell_tool: bool) 
                 "type":"object",
                 "properties":{"path":{"type":"string"}},
                 "required":["path"]
+            }),
+            side_effects: SideEffects::FilesystemRead,
+        },
+        ToolDef {
+            name: "glob".to_string(),
+            description: "Find files matching a glob pattern under a scoped path.".to_string(),
+            parameters: json!({
+                "type":"object",
+                "properties":{
+                    "pattern":{"type":"string"},
+                    "path":{"type":"string"},
+                    "max_results":{"type":"integer","minimum":1,"maximum":1000}
+                },
+                "required":["pattern"]
+            }),
+            side_effects: SideEffects::FilesystemRead,
+        },
+        ToolDef {
+            name: "grep".to_string(),
+            description: "Search text files with a regex pattern under a scoped path.".to_string(),
+            parameters: json!({
+                "type":"object",
+                "properties":{
+                    "pattern":{"type":"string"},
+                    "path":{"type":"string"},
+                    "max_results":{"type":"integer","minimum":1,"maximum":1000},
+                    "ignore_case":{"type":"boolean"}
+                },
+                "required":["pattern"]
             }),
             side_effects: SideEffects::FilesystemRead,
         },
@@ -211,6 +263,25 @@ fn compact_builtin_schema(tool_name: &str) -> Option<Value> {
             "required":["path"],
             "properties":{"path":{"type":"string"}}
         })),
+        "glob" => Some(json!({
+            "type":"object",
+            "required":["pattern"],
+            "properties":{
+                "pattern":{"type":"string"},
+                "path":{"type":"string"},
+                "max_results":{"type":"integer","minimum":1,"maximum":1000}
+            }
+        })),
+        "grep" => Some(json!({
+            "type":"object",
+            "required":["pattern"],
+            "properties":{
+                "pattern":{"type":"string"},
+                "path":{"type":"string"},
+                "max_results":{"type":"integer","minimum":1,"maximum":1000},
+                "ignore_case":{"type":"boolean"}
+            }
+        })),
         "shell" => Some(json!({
             "type":"object",
             "required":["cmd"],
@@ -243,6 +314,8 @@ fn minimal_builtin_example(tool_name: &str) -> Option<Value> {
     match tool_name {
         "list_dir" => Some(json!({"path":"."})),
         "read_file" => Some(json!({"path":"src/main.rs"})),
+        "glob" => Some(json!({"pattern":"src/**/*.rs","path":".","max_results":200})),
+        "grep" => Some(json!({"pattern":"TODO","path":".","max_results":200,"ignore_case":false})),
         "shell" => Some(json!({"cmd":"echo","args":["hello"]})),
         "write_file" => Some(json!({"path":"notes.txt","content":"hello"})),
         "apply_patch" => Some(json!({"path":"src/main.rs","patch":"@@ -1 +1 @@\n-a\n+b\n"})),
@@ -253,6 +326,8 @@ fn minimal_builtin_example(tool_name: &str) -> Option<Value> {
 fn sorted_builtin_tool_names() -> Vec<String> {
     let mut names = vec![
         "apply_patch".to_string(),
+        "glob".to_string(),
+        "grep".to_string(),
         "list_dir".to_string(),
         "read_file".to_string(),
         "shell".to_string(),
@@ -351,6 +426,9 @@ pub fn invalid_args_tool_message(
             stdout_truncated: None,
             source: source.to_string(),
             execution_target,
+            warnings: None,
+            warnings_max: None,
+            warnings_truncated: None,
             docker: None,
         },
     ))
@@ -369,6 +447,43 @@ pub fn validate_builtin_tool_args(
     }
     match tool_name {
         "list_dir" | "read_file" => require_non_empty_string(obj, "path")?,
+        "glob" => {
+            require_non_empty_string(obj, "pattern")?;
+            if let Some(v) = obj.get("path") {
+                if v.as_str().is_none() {
+                    return Err("path must be a string".to_string());
+                }
+            }
+            if let Some(v) = obj.get("max_results") {
+                let n = v
+                    .as_u64()
+                    .ok_or_else(|| "max_results must be an integer".to_string())?;
+                if !(1..=1000).contains(&n) {
+                    return Err("max_results must be between 1 and 1000".to_string());
+                }
+            }
+        }
+        "grep" => {
+            require_non_empty_string(obj, "pattern")?;
+            if let Some(v) = obj.get("path") {
+                if v.as_str().is_none() {
+                    return Err("path must be a string".to_string());
+                }
+            }
+            if let Some(v) = obj.get("max_results") {
+                let n = v
+                    .as_u64()
+                    .ok_or_else(|| "max_results must be an integer".to_string())?;
+                if !(1..=1000).contains(&n) {
+                    return Err("max_results must be between 1 and 1000".to_string());
+                }
+            }
+            if let Some(v) = obj.get("ignore_case") {
+                if v.as_bool().is_none() {
+                    return Err("ignore_case must be a boolean".to_string());
+                }
+            }
+        }
         "shell" => {
             require_non_empty_string(obj, "cmd")?;
             if let Some(v) = obj.get("args") {
@@ -520,6 +635,8 @@ pub async fn execute_tool(rt: &ToolRuntime, tc: &ToolCall) -> Message {
     let exec = match tc.name.as_str() {
         "list_dir" => run_list_dir(rt, &tc.arguments).await,
         "read_file" => run_read_file(rt, &tc.arguments).await,
+        "glob" => run_glob(rt, &tc.arguments).await,
+        "grep" => run_grep(rt, &tc.arguments).await,
         "shell" => run_shell(rt, &tc.arguments).await,
         "write_file" => run_write_file(rt, &tc.arguments).await,
         "apply_patch" => run_apply_patch(rt, &tc.arguments).await,
@@ -546,6 +663,9 @@ pub async fn execute_tool(rt: &ToolRuntime, tc: &ToolCall) -> Message {
                     ExecTargetKind::Host => "host".to_string(),
                     ExecTargetKind::Docker => "docker".to_string(),
                 },
+                warnings: None,
+                warnings_max: None,
+                warnings_truncated: None,
                 docker: None,
             },
         },
@@ -614,6 +734,412 @@ async fn run_read_file(rt: &ToolRuntime, args: &Value) -> ToolExecution {
         })
         .await;
     target_to_exec(SideEffects::FilesystemRead, out)
+}
+
+fn search_path_from_args(args: &Value) -> &str {
+    args.get("path").and_then(|v| v.as_str()).unwrap_or(".")
+}
+
+fn max_results_from_args(args: &Value) -> Result<usize, String> {
+    let raw = args
+        .get("max_results")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(200);
+    if !(1..=1000).contains(&raw) {
+        return Err("max_results must be between 1 and 1000".to_string());
+    }
+    Ok(raw as usize)
+}
+
+fn normalize_rel_path(path: &Path) -> String {
+    let mut parts = Vec::new();
+    for comp in path.components() {
+        if let std::path::Component::Normal(s) = comp {
+            parts.push(s.to_string_lossy().to_string());
+        }
+    }
+    if parts.is_empty() {
+        ".".to_string()
+    } else {
+        parts.join("/")
+    }
+}
+
+fn has_git_segment(path: &Path) -> bool {
+    path.components().any(|c| match c {
+        std::path::Component::Normal(s) => s == ".git",
+        _ => false,
+    })
+}
+
+fn attach_warnings(meta: &mut ToolResultMeta, mut warnings: Vec<ToolWarningDetail>) {
+    warnings.sort_by(|a, b| a.path.cmp(&b.path).then(a.code.cmp(&b.code)));
+    let warnings_max = 50usize;
+    let truncated = warnings.len() > warnings_max;
+    if truncated {
+        warnings.truncate(warnings_max);
+    }
+    if !warnings.is_empty() {
+        meta.warnings = Some(warnings);
+        meta.warnings_max = Some(warnings_max as u32);
+        meta.warnings_truncated = Some(truncated);
+    }
+}
+
+fn collect_search_files(
+    rt: &ToolRuntime,
+    search_path: &str,
+) -> Result<(Vec<(String, PathBuf)>, Vec<ToolWarningDetail>), ToolExecution> {
+    if !path_is_workdir_scoped(search_path) && !rt.unsafe_bypass_allow_flags {
+        return Err(failed_exec(
+            rt,
+            SideEffects::FilesystemRead,
+            "path must stay within workdir (no absolute paths or '..' traversal)".to_string(),
+            Some(ToolErrorDetail {
+                code: ToolErrorCode::PathOutOfScope,
+                message: "Path must stay within workdir.".to_string(),
+                expected_schema: None,
+                received_args: Some(json!({"path": search_path})),
+                minimal_example: Some(json!({"path":"."})),
+                available_tools: None,
+            }),
+        ));
+    }
+
+    let base = rt.workdir.join(search_path);
+    if !base.exists() {
+        return Err(failed_exec(
+            rt,
+            SideEffects::FilesystemRead,
+            format!("io error: path does not exist: {}", base.display()),
+            Some(ToolErrorDetail {
+                code: ToolErrorCode::IoError,
+                message: format!("Path does not exist: {}", base.display()),
+                expected_schema: None,
+                received_args: Some(json!({"path": search_path})),
+                minimal_example: Some(json!({"path":"."})),
+                available_tools: None,
+            }),
+        ));
+    }
+
+    let canonical_workdir = std::fs::canonicalize(&rt.workdir).unwrap_or(rt.workdir.clone());
+    let mut warnings = Vec::new();
+    let mut files = Vec::new();
+    let mut stack = vec![base];
+    let mut seen_dirs = BTreeSet::new();
+
+    while let Some(current) = stack.pop() {
+        let metadata = match std::fs::symlink_metadata(&current) {
+            Ok(m) => m,
+            Err(e) => {
+                return Err(failed_exec(
+                    rt,
+                    SideEffects::FilesystemRead,
+                    format!("io error: failed to stat {}: {e}", current.display()),
+                    Some(ToolErrorDetail {
+                        code: ToolErrorCode::IoError,
+                        message: format!("failed to stat {}", current.display()),
+                        expected_schema: None,
+                        received_args: Some(json!({"path": search_path})),
+                        minimal_example: Some(json!({"path":"."})),
+                        available_tools: None,
+                    }),
+                ));
+            }
+        };
+
+        let rel = current
+            .strip_prefix(&rt.workdir)
+            .map(normalize_rel_path)
+            .unwrap_or_else(|_| normalize_rel_path(&current));
+
+        if metadata.file_type().is_symlink() {
+            if let Ok(target) = std::fs::canonicalize(&current) {
+                if !target.starts_with(&canonical_workdir) {
+                    warnings.push(ToolWarningDetail {
+                        code: "symlink_out_of_scope_skipped".to_string(),
+                        path: rel,
+                        target: "OUT_OF_SCOPE".to_string(),
+                        reason: "target escapes workdir".to_string(),
+                    });
+                }
+            }
+            continue;
+        }
+
+        if metadata.is_dir() {
+            if rel != "." && has_git_segment(Path::new(&rel)) {
+                continue;
+            }
+            let canonical_dir = std::fs::canonicalize(&current).unwrap_or_else(|_| current.clone());
+            if !seen_dirs.insert(canonical_dir) {
+                continue;
+            }
+            let rd = match std::fs::read_dir(&current) {
+                Ok(v) => v,
+                Err(e) => {
+                    return Err(failed_exec(
+                        rt,
+                        SideEffects::FilesystemRead,
+                        format!(
+                            "io error: failed to read directory {}: {e}",
+                            current.display()
+                        ),
+                        Some(ToolErrorDetail {
+                            code: ToolErrorCode::IoError,
+                            message: format!("failed to read directory {}", current.display()),
+                            expected_schema: None,
+                            received_args: Some(json!({"path": search_path})),
+                            minimal_example: Some(json!({"path":"."})),
+                            available_tools: None,
+                        }),
+                    ));
+                }
+            };
+            let mut children = Vec::new();
+            for entry in rd.flatten() {
+                children.push(entry.path());
+            }
+            children.sort_by(|a, b| a.to_string_lossy().cmp(&b.to_string_lossy()));
+            while let Some(child) = children.pop() {
+                stack.push(child);
+            }
+            continue;
+        }
+
+        if metadata.is_file() {
+            if rel != "." && has_git_segment(Path::new(&rel)) {
+                continue;
+            }
+            files.push((rel, current));
+        }
+    }
+
+    Ok((files, warnings))
+}
+
+async fn run_glob(rt: &ToolRuntime, args: &Value) -> ToolExecution {
+    let pattern = match args.get("pattern").and_then(|v| v.as_str()) {
+        Some(s) if !s.is_empty() => s,
+        _ => {
+            return failed_exec(
+                rt,
+                SideEffects::FilesystemRead,
+                "invalid tool arguments: pattern must be a non-empty string".to_string(),
+                Some(invalid_args_detail(
+                    "glob",
+                    args,
+                    "pattern must be a non-empty string",
+                )),
+            )
+        }
+    };
+    let max_results = match max_results_from_args(args) {
+        Ok(v) => v,
+        Err(e) => {
+            return failed_exec(
+                rt,
+                SideEffects::FilesystemRead,
+                format!("invalid tool arguments: {e}"),
+                Some(invalid_args_detail("glob", args, &e)),
+            )
+        }
+    };
+    let matcher = match Glob::new(pattern) {
+        Ok(g) => g.compile_matcher(),
+        Err(e) => {
+            return failed_exec(
+                rt,
+                SideEffects::FilesystemRead,
+                format!("invalid pattern: {e}"),
+                Some(ToolErrorDetail {
+                    code: ToolErrorCode::InvalidPattern,
+                    message: format!("Invalid pattern: {e}"),
+                    expected_schema: compact_builtin_schema("glob"),
+                    received_args: Some(args.clone()),
+                    minimal_example: minimal_builtin_example("glob"),
+                    available_tools: None,
+                }),
+            )
+        }
+    };
+
+    let (files, warnings) = match collect_search_files(rt, search_path_from_args(args)) {
+        Ok(v) => v,
+        Err(exec) => return exec,
+    };
+    let mut matches = files
+        .into_iter()
+        .filter_map(|(rel, _)| {
+            if matcher.is_match(&rel) {
+                Some(rel)
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<_>>();
+    matches.sort();
+    let total = matches.len();
+    let truncated = total > max_results;
+    if truncated {
+        matches.truncate(max_results);
+    }
+    let content = json!({
+        "matches": matches,
+        "match_count": total,
+        "truncated": truncated,
+        "max_results": max_results
+    })
+    .to_string();
+    let mut meta = base_meta(rt, SideEffects::FilesystemRead);
+    attach_warnings(&mut meta, warnings);
+    ToolExecution {
+        ok: true,
+        content,
+        truncated: false,
+        error: None,
+        meta,
+    }
+}
+
+async fn run_grep(rt: &ToolRuntime, args: &Value) -> ToolExecution {
+    let pattern = match args.get("pattern").and_then(|v| v.as_str()) {
+        Some(s) if !s.is_empty() => s,
+        _ => {
+            return failed_exec(
+                rt,
+                SideEffects::FilesystemRead,
+                "invalid tool arguments: pattern must be a non-empty string".to_string(),
+                Some(invalid_args_detail(
+                    "grep",
+                    args,
+                    "pattern must be a non-empty string",
+                )),
+            )
+        }
+    };
+    let max_results = match max_results_from_args(args) {
+        Ok(v) => v,
+        Err(e) => {
+            return failed_exec(
+                rt,
+                SideEffects::FilesystemRead,
+                format!("invalid tool arguments: {e}"),
+                Some(invalid_args_detail("grep", args, &e)),
+            )
+        }
+    };
+    let ignore_case = args
+        .get("ignore_case")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let re = match RegexBuilder::new(pattern)
+        .case_insensitive(ignore_case)
+        .build()
+    {
+        Ok(v) => v,
+        Err(e) => {
+            return failed_exec(
+                rt,
+                SideEffects::FilesystemRead,
+                format!("invalid pattern: {e}"),
+                Some(ToolErrorDetail {
+                    code: ToolErrorCode::InvalidPattern,
+                    message: format!("Invalid pattern: {e}"),
+                    expected_schema: compact_builtin_schema("grep"),
+                    received_args: Some(args.clone()),
+                    minimal_example: minimal_builtin_example("grep"),
+                    available_tools: None,
+                }),
+            )
+        }
+    };
+    let (files, warnings) = match collect_search_files(rt, search_path_from_args(args)) {
+        Ok(v) => v,
+        Err(exec) => return exec,
+    };
+
+    let mut skipped_non_text = 0usize;
+    let mut matches = Vec::new();
+    for (rel, abs) in files {
+        let bytes = match std::fs::read(&abs) {
+            Ok(v) => v,
+            Err(e) => {
+                return failed_exec(
+                    rt,
+                    SideEffects::FilesystemRead,
+                    format!("io error: failed to read {}: {e}", abs.display()),
+                    Some(ToolErrorDetail {
+                        code: ToolErrorCode::IoError,
+                        message: format!("failed to read {}", abs.display()),
+                        expected_schema: None,
+                        received_args: Some(args.clone()),
+                        minimal_example: minimal_builtin_example("grep"),
+                        available_tools: None,
+                    }),
+                );
+            }
+        };
+        if bytes.contains(&0) {
+            skipped_non_text += 1;
+            continue;
+        }
+        let text = match std::str::from_utf8(&bytes) {
+            Ok(v) => v,
+            Err(_) => {
+                skipped_non_text += 1;
+                continue;
+            }
+        };
+        for (idx, line) in text.split('\n').enumerate() {
+            let line_text = line.strip_suffix('\r').unwrap_or(line);
+            for m in re.find_iter(line_text) {
+                matches.push(json!({
+                    "path": rel,
+                    "line": idx + 1,
+                    "column": m.start() + 1,
+                    "text": line_text
+                }));
+            }
+        }
+    }
+    matches.sort_by(|a, b| {
+        let ap = a.get("path").and_then(|v| v.as_str()).unwrap_or_default();
+        let bp = b.get("path").and_then(|v| v.as_str()).unwrap_or_default();
+        let al = a.get("line").and_then(|v| v.as_u64()).unwrap_or(0);
+        let bl = b.get("line").and_then(|v| v.as_u64()).unwrap_or(0);
+        let ac = a.get("column").and_then(|v| v.as_u64()).unwrap_or(0);
+        let bc = b.get("column").and_then(|v| v.as_u64()).unwrap_or(0);
+        let at = a.get("text").and_then(|v| v.as_str()).unwrap_or_default();
+        let bt = b.get("text").and_then(|v| v.as_str()).unwrap_or_default();
+        ap.cmp(bp)
+            .then(al.cmp(&bl))
+            .then(ac.cmp(&bc))
+            .then(at.cmp(bt))
+    });
+    let total = matches.len();
+    let truncated = total > max_results;
+    if truncated {
+        matches.truncate(max_results);
+    }
+    let content = json!({
+        "matches": matches,
+        "match_count": total,
+        "truncated": truncated,
+        "max_results": max_results,
+        "skipped_binary_or_non_utf8_files": skipped_non_text
+    })
+    .to_string();
+    let mut meta = base_meta(rt, SideEffects::FilesystemRead);
+    attach_warnings(&mut meta, warnings);
+    ToolExecution {
+        ok: true,
+        content,
+        truncated: false,
+        error: None,
+        meta,
+    }
 }
 
 async fn run_shell(rt: &ToolRuntime, args: &Value) -> ToolExecution {
@@ -841,6 +1367,9 @@ fn target_to_exec(side_effects: SideEffects, out: crate::target::TargetResult) -
                 ExecTargetKind::Host => "host".to_string(),
                 ExecTargetKind::Docker => "docker".to_string(),
             },
+            warnings: None,
+            warnings_max: None,
+            warnings_truncated: None,
             docker: out.docker,
         },
     }
@@ -858,6 +1387,9 @@ fn base_meta(rt: &ToolRuntime, side_effects: SideEffects) -> ToolResultMeta {
             ExecTargetKind::Host => "host".to_string(),
             ExecTargetKind::Docker => "docker".to_string(),
         },
+        warnings: None,
+        warnings_max: None,
+        warnings_truncated: None,
         docker: None,
     }
 }
@@ -902,6 +1434,8 @@ mod tests {
     fn write_tools_not_exposed_by_default() {
         let tools = builtin_tools_enabled(false, false);
         let names = tools.into_iter().map(|t| t.name).collect::<Vec<_>>();
+        assert!(names.iter().any(|n| n == "glob"));
+        assert!(names.iter().any(|n| n == "grep"));
         assert!(!names.iter().any(|n| n == "shell"));
         assert!(!names.iter().any(|n| n == "write_file"));
         assert!(!names.iter().any(|n| n == "apply_patch"));
@@ -910,6 +1444,8 @@ mod tests {
     #[test]
     fn side_effects_map_builtin_and_mcp() {
         assert_eq!(tool_side_effects("list_dir"), SideEffects::FilesystemRead);
+        assert_eq!(tool_side_effects("glob"), SideEffects::FilesystemRead);
+        assert_eq!(tool_side_effects("grep"), SideEffects::FilesystemRead);
         assert_eq!(
             tool_side_effects("mcp.playwright.browser_snapshot"),
             SideEffects::Browser
@@ -1059,12 +1595,195 @@ mod tests {
             .unwrap_or_default();
         let expected = vec![
             json!("apply_patch"),
+            json!("glob"),
+            json!("grep"),
             json!("list_dir"),
             json!("read_file"),
             json!("shell"),
             json!("write_file"),
         ];
         assert_eq!(got, expected);
+    }
+
+    #[tokio::test]
+    async fn glob_returns_sorted_matches_and_truncates() {
+        let tmp = tempdir().expect("tempdir");
+        std::fs::create_dir_all(tmp.path().join("src")).expect("mkdir");
+        std::fs::write(tmp.path().join("src").join("b.rs"), "fn b() {}\n").expect("write");
+        std::fs::write(tmp.path().join("src").join("a.rs"), "fn a() {}\n").expect("write");
+        let rt = ToolRuntime {
+            workdir: tmp.path().to_path_buf(),
+            allow_shell: false,
+            allow_shell_in_workdir_only: false,
+            allow_write: false,
+            max_tool_output_bytes: 200_000,
+            max_read_bytes: 200_000,
+            unsafe_bypass_allow_flags: false,
+            tool_args_strict: ToolArgsStrict::On,
+            exec_target_kind: ExecTargetKind::Host,
+            exec_target: std::sync::Arc::new(HostTarget),
+        };
+        let tc = ToolCall {
+            id: "tc_glob".to_string(),
+            name: "glob".to_string(),
+            arguments: json!({"pattern":"src/*.rs","max_results":1}),
+        };
+        let msg = execute_tool(&rt, &tc).await;
+        let env: Value = serde_json::from_str(&msg.content.unwrap_or_default()).expect("env");
+        assert_eq!(env.get("ok").and_then(|v| v.as_bool()), Some(true));
+        let content = env
+            .get("content")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        let body: Value = serde_json::from_str(content).expect("body");
+        assert_eq!(
+            body.get("matches")
+                .and_then(|v| v.as_array())
+                .and_then(|arr| arr.first())
+                .and_then(|v| v.as_str()),
+            Some("src/a.rs")
+        );
+        assert_eq!(body.get("truncated").and_then(|v| v.as_bool()), Some(true));
+    }
+
+    #[tokio::test]
+    async fn grep_returns_byte_columns_multi_match_and_skips_non_utf8() {
+        let tmp = tempdir().expect("tempdir");
+        std::fs::write(tmp.path().join("f.txt"), "aba\r\naba\n").expect("write");
+        std::fs::write(tmp.path().join("bin.dat"), vec![0, 159, 146, 150]).expect("write");
+        let rt = ToolRuntime {
+            workdir: tmp.path().to_path_buf(),
+            allow_shell: false,
+            allow_shell_in_workdir_only: false,
+            allow_write: false,
+            max_tool_output_bytes: 200_000,
+            max_read_bytes: 200_000,
+            unsafe_bypass_allow_flags: false,
+            tool_args_strict: ToolArgsStrict::On,
+            exec_target_kind: ExecTargetKind::Host,
+            exec_target: std::sync::Arc::new(HostTarget),
+        };
+        let tc = ToolCall {
+            id: "tc_grep".to_string(),
+            name: "grep".to_string(),
+            arguments: json!({"pattern":"a","path":".","max_results":10}),
+        };
+        let msg = execute_tool(&rt, &tc).await;
+        let env: Value = serde_json::from_str(&msg.content.unwrap_or_default()).expect("env");
+        let content = env
+            .get("content")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        let body: Value = serde_json::from_str(content).expect("body");
+        assert_eq!(
+            body.get("skipped_binary_or_non_utf8_files")
+                .and_then(|v| v.as_u64()),
+            Some(1)
+        );
+        let matches = body
+            .get("matches")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
+        assert!(matches.len() >= 4);
+        assert_eq!(
+            matches
+                .first()
+                .and_then(|m| m.get("line"))
+                .and_then(|v| v.as_u64()),
+            Some(1)
+        );
+        assert_eq!(
+            matches
+                .first()
+                .and_then(|m| m.get("column"))
+                .and_then(|v| v.as_u64()),
+            Some(1)
+        );
+        assert_eq!(
+            matches
+                .first()
+                .and_then(|m| m.get("text"))
+                .and_then(|v| v.as_str()),
+            Some("aba")
+        );
+    }
+
+    #[tokio::test]
+    async fn glob_rejects_out_of_scope_path() {
+        let tmp = tempdir().expect("tempdir");
+        let rt = ToolRuntime {
+            workdir: tmp.path().to_path_buf(),
+            allow_shell: false,
+            allow_shell_in_workdir_only: false,
+            allow_write: false,
+            max_tool_output_bytes: 200_000,
+            max_read_bytes: 200_000,
+            unsafe_bypass_allow_flags: false,
+            tool_args_strict: ToolArgsStrict::On,
+            exec_target_kind: ExecTargetKind::Host,
+            exec_target: std::sync::Arc::new(HostTarget),
+        };
+        let tc = ToolCall {
+            id: "tc_glob_oos".to_string(),
+            name: "glob".to_string(),
+            arguments: json!({"pattern":"*.rs","path":"../"}),
+        };
+        let msg = execute_tool(&rt, &tc).await;
+        let env: Value = serde_json::from_str(&msg.content.unwrap_or_default()).expect("env");
+        assert_eq!(
+            env.get("error")
+                .and_then(|e| e.get("code"))
+                .and_then(|v| v.as_str()),
+            Some("path_out_of_scope")
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn grep_symlink_out_of_scope_adds_warning_metadata() {
+        use std::os::unix::fs::symlink;
+
+        let tmp = tempdir().expect("tempdir");
+        std::fs::create_dir_all(tmp.path().join("inner")).expect("mkdir");
+        std::fs::write(tmp.path().join("inner").join("ok.txt"), "hello\n").expect("write");
+        let outside = tempdir().expect("outside");
+        std::fs::write(outside.path().join("x.txt"), "world\n").expect("write");
+        symlink(outside.path(), tmp.path().join("inner").join("escape")).expect("symlink");
+
+        let rt = ToolRuntime {
+            workdir: tmp.path().to_path_buf(),
+            allow_shell: false,
+            allow_shell_in_workdir_only: false,
+            allow_write: false,
+            max_tool_output_bytes: 200_000,
+            max_read_bytes: 200_000,
+            unsafe_bypass_allow_flags: false,
+            tool_args_strict: ToolArgsStrict::On,
+            exec_target_kind: ExecTargetKind::Host,
+            exec_target: std::sync::Arc::new(HostTarget),
+        };
+        let tc = ToolCall {
+            id: "tc_warn".to_string(),
+            name: "grep".to_string(),
+            arguments: json!({"pattern":"hello","path":"inner"}),
+        };
+        let msg = execute_tool(&rt, &tc).await;
+        let env: Value = serde_json::from_str(&msg.content.unwrap_or_default()).expect("env");
+        let warnings = env
+            .get("meta")
+            .and_then(|m| m.get("warnings"))
+            .and_then(|w| w.as_array())
+            .cloned()
+            .unwrap_or_default();
+        assert!(!warnings.is_empty());
+        assert_eq!(
+            warnings
+                .first()
+                .and_then(|w| w.get("target"))
+                .and_then(|v| v.as_str()),
+            Some("OUT_OF_SCOPE")
+        );
     }
 
     #[tokio::test]

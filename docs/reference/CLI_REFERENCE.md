@@ -375,6 +375,12 @@ Fast local test run:
 localagent --provider lmstudio --model <model> --caps off --trust off --hooks off --no-session --max-steps 8 --prompt "Say hi." run
 ```
 
+Preferred safe search workflow (no shell/write flags):
+
+```bash
+localagent --provider lmstudio --model <model> --trust on --prompt "Use glob/grep to find TODOs under src/ and summarize." run
+```
+
 Enable shell and write tools intentionally:
 
 ```bash

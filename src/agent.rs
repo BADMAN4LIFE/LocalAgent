@@ -2807,6 +2807,9 @@ Fallback when native tool calls are unavailable:\n\
                                     stdout_truncated: None,
                                     source: "runtime".to_string(),
                                     execution_target: "host".to_string(),
+                                    warnings: None,
+                                    warnings_max: None,
+                                    warnings_truncated: None,
                                     docker: None,
                                 },
                             )));
