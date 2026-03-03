@@ -7,6 +7,10 @@ use crate::compaction::{CompactionReport, CompactionSettings};
 use crate::trust::policy::McpAllowSummary;
 use crate::types::{Message, SideEffects, ToolCall};
 
+pub(crate) fn default_agent_mode() -> String {
+    "build".to_string()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RunRecord {
     pub metadata: RunMetadata,
@@ -164,6 +168,8 @@ pub struct RunMetadata {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RunCliConfig {
     pub mode: String,
+    #[serde(default = "default_agent_mode")]
+    pub agent_mode: String,
     pub provider: String,
     pub base_url: String,
     pub model: String,
@@ -332,6 +338,8 @@ pub struct RunResolvedPaths {
 pub struct ConfigFingerprintV1 {
     pub schema_version: String,
     pub mode: String,
+    #[serde(default = "default_agent_mode")]
+    pub agent_mode: String,
     pub provider: String,
     pub base_url: String,
     pub model: String,

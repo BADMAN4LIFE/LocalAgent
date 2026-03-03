@@ -890,7 +890,7 @@ async fn drive_tui_active_turn_loop(input: TuiActiveTurnLoopInput<'_>) -> anyhow
         terminal.draw(|f| {
             chat_ui::draw_chat_frame(
                 f,
-                chat_runtime::chat_mode_label(active_run),
+                &chat_runtime::chat_mode_display_label(active_run),
                 provider_runtime::provider_cli_name(provider_kind),
                 *provider_connected,
                 model,
@@ -1479,7 +1479,7 @@ fn handle_tui_outer_event_dispatch(
 }
 
 struct TuiRenderFrameInput<'a> {
-    mode_label: &'a str,
+    mode_label: String,
     provider_label: &'a str,
     provider_connected: bool,
     model: &'a str,
@@ -1597,7 +1597,7 @@ fn build_tui_render_frame_input(input: TuiRenderFrameBuildInput<'_>) -> TuiRende
     });
 
     TuiRenderFrameInput {
-        mode_label: chat_runtime::chat_mode_label(input.active_run),
+        mode_label: chat_runtime::chat_mode_display_label(input.active_run),
         provider_label: provider_runtime::provider_cli_name(input.provider_kind),
         provider_connected: input.provider_connected,
         model: input.model,
@@ -2676,7 +2676,7 @@ async fn handle_tui_enter_submit(
     terminal.draw(|f| {
         chat_ui::draw_chat_frame(
             f,
-            chat_runtime::chat_mode_label(active_run),
+            &chat_runtime::chat_mode_display_label(active_run),
             provider_runtime::provider_cli_name(provider_kind),
             *provider_connected,
             model,
@@ -2848,7 +2848,7 @@ async fn handle_tui_slash_command(
         "/mode" => {
             input.logs.push(format!(
                 "current mode: {} (use /mode <safe|coding|web|custom>)",
-                chat_runtime::chat_mode_label(input.active_run)
+                chat_runtime::chat_mode_display_label(input.active_run)
             ));
             *input.show_logs = true;
         }
@@ -2952,7 +2952,7 @@ async fn handle_tui_slash_command(
             if runtime_config::apply_chat_mode(input.active_run, mode).is_some() {
                 input.logs.push(format!(
                     "mode switched to {}",
-                    chat_runtime::chat_mode_label(input.active_run)
+                    chat_runtime::chat_mode_display_label(input.active_run)
                 ));
             } else {
                 input.logs.push(format!(
@@ -3185,7 +3185,7 @@ pub(crate) async fn run_chat_tui(
             terminal.draw(|f| {
                 chat_ui::draw_chat_frame(
                     f,
-                    frame.mode_label,
+                    frame.mode_label.as_str(),
                     frame.provider_label,
                     frame.provider_connected,
                     frame.model,
@@ -3316,7 +3316,7 @@ pub(crate) async fn run_chat_tui(
                                         terminal.draw(|f| {
                                             chat_ui::draw_chat_frame(
                                                 f,
-                                                frame.mode_label,
+                                                frame.mode_label.as_str(),
                                                 frame.provider_label,
                                                 frame.provider_connected,
                                                 frame.model,

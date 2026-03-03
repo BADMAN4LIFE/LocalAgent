@@ -1037,6 +1037,9 @@ pub(crate) struct RunArgs {
     #[arg(long, default_value_t = false)]
     pub(crate) enable_write_tools: bool,
 
+    #[arg(long, value_enum, default_value_t = AgentMode::Build)]
+    pub(crate) agent_mode: AgentMode,
+
     #[arg(long, value_enum, default_value_t = ExecTargetKind::Host)]
     pub(crate) exec_target: ExecTargetKind,
 
@@ -1240,6 +1243,13 @@ pub(crate) struct RunArgs {
 
     #[arg(skip)]
     pub(crate) resolved_reliability_profile_hash_hex: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub(crate) enum AgentMode {
+    Build,
+
+    Plan,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]

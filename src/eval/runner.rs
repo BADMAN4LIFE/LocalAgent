@@ -1006,6 +1006,7 @@ fn write_run_artifact_for_eval(
 ) -> anyhow::Result<()> {
     let cli_config = RunCliConfig {
         mode: format!("{:?}", config.mode).to_lowercase(),
+        agent_mode: "build".to_string(),
         provider: provider_to_string(config.provider),
         base_url: config.base_url.clone(),
         model: model.to_string(),
@@ -1120,6 +1121,7 @@ fn write_run_artifact_for_eval(
     let fingerprint = ConfigFingerprintV1 {
         schema_version: "openagent.confighash.v1".to_string(),
         mode: format!("{:?}", config.mode).to_lowercase(),
+        agent_mode: "build".to_string(),
         provider: provider_to_string(config.provider),
         base_url: config.base_url.clone(),
         model: model.to_string(),

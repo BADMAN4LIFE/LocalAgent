@@ -108,6 +108,7 @@ pub(crate) fn build_run_cli_config(input: RunCliConfigInput<'_>) -> RunCliConfig
     };
     RunCliConfig {
         mode: format!("{:?}", mode).to_lowercase(),
+        agent_mode: format!("{:?}", args.agent_mode).to_lowercase(),
         provider: provider_to_string(provider_kind),
         base_url: base_url.to_string(),
         model: model.to_string(),
@@ -258,6 +259,7 @@ pub(crate) fn build_config_fingerprint(
     ConfigFingerprintV1 {
         schema_version: "openagent.confighash.v1".to_string(),
         mode: cli_config.mode.clone(),
+        agent_mode: cli_config.agent_mode.clone(),
         provider: cli_config.provider.clone(),
         base_url: cli_config.base_url.clone(),
         model: model.to_string(),

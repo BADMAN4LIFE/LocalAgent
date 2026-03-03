@@ -235,6 +235,12 @@ pub(crate) async fn run_agent_with_ui<P: ModelProvider>(
     shared_mcp_registry: Option<std::sync::Arc<McpRegistry>>,
     suppress_stdout_stream: bool,
 ) -> anyhow::Result<RunExecutionResult> {
+    let mut effective_args = args.clone();
+    runtime_flags::apply_agent_mode_capability_baseline(
+        &mut effective_args,
+        runtime_flags::parse_capability_explicit_flags(),
+    );
+    let args = &effective_args;
     let workdir = std::fs::canonicalize(&args.workdir)
         .with_context(|| format!("failed to resolve workdir: {}", args.workdir.display()))?;
     let exec_target = build_exec_target(args)?;
@@ -1710,14 +1716,18 @@ fn build_ui_runtime_setup(input: UiRuntimeSetupInput<'_>) -> anyhow::Result<UiRu
             max_log_lines: input.args.tui_max_log_lines,
             provider: provider_to_string(input.provider_kind),
             model: input.worker_model.to_string(),
-            mode_label: if !input.args.allow_shell
-                && !input.args.allow_write
-                && !input.args.enable_write_tools
-            {
-                "SAFE".to_string()
-            } else {
-                "CODE".to_string()
-            },
+            mode_label: format!(
+                "{}·{}",
+                if !input.args.allow_shell
+                    && !input.args.allow_write
+                    && !input.args.enable_write_tools
+                {
+                    "SAFE".to_string()
+                } else {
+                    "CODE".to_string()
+                },
+                format!("{:?}", input.args.agent_mode).to_ascii_uppercase()
+            ),
             authority_label: if input.args.approval_mode == ApprovalMode::Auto {
                 "EXEC".to_string()
             } else {

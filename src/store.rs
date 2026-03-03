@@ -267,6 +267,7 @@ mod tests {
             &paths,
             RunCliConfig {
                 mode: "single".to_string(),
+                agent_mode: "build".to_string(),
                 provider: "ollama".to_string(),
                 base_url: "http://localhost:11434".to_string(),
                 model: "m".to_string(),
@@ -427,6 +428,18 @@ mod tests {
         let legacy_loaded: RunRecord = serde_json::from_value(legacy_value).expect("deserialize");
         assert_eq!(legacy_loaded.tool_reliability.tool_calls_total, 0);
         assert!(legacy_loaded.tool_reliability.by_tool.is_empty());
+
+        let mut legacy_value_missing_agent_mode =
+            serde_json::to_value(&loaded).expect("serialize legacy");
+        legacy_value_missing_agent_mode
+            .get_mut("cli")
+            .and_then(serde_json::Value::as_object_mut)
+            .expect("cli object")
+            .remove("agent_mode");
+        let legacy_loaded_missing_agent_mode: RunRecord =
+            serde_json::from_value(legacy_value_missing_agent_mode)
+                .expect("deserialize missing agent_mode");
+        assert_eq!(legacy_loaded_missing_agent_mode.cli.agent_mode, "build");
     }
 
     #[test]
@@ -466,6 +479,7 @@ mod tests {
             }),
             cli: RunCliConfig {
                 mode: "planner_worker".to_string(),
+                agent_mode: "build".to_string(),
                 provider: "ollama".to_string(),
                 base_url: "http://localhost:11434".to_string(),
                 model: "w".to_string(),
@@ -621,6 +635,7 @@ mod tests {
         let mut a = ConfigFingerprintV1 {
             schema_version: "openagent.confighash.v1".to_string(),
             mode: "single".to_string(),
+            agent_mode: "build".to_string(),
             provider: "ollama".to_string(),
             base_url: "http://localhost:11434".to_string(),
             model: "m".to_string(),
@@ -720,6 +735,11 @@ mod tests {
         d.exec_target = "docker".to_string();
         let hd = config_hash_hex(&d).expect("hash d");
         assert_ne!(hb, hd);
+
+        let mut e = b.clone();
+        e.agent_mode = "plan".to_string();
+        let he = config_hash_hex(&e).expect("hash e");
+        assert_ne!(hb, he);
     }
 
     #[test]

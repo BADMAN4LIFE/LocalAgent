@@ -721,6 +721,123 @@ fn sampling_validation_accepts_valid_values() {
     super::cli_dispatch::validate_sampling_args(&run).expect("valid");
 }
 
+#[test]
+fn agent_mode_defaults_to_build() {
+    let cli = Cli::parse_from(["localagent"]);
+    assert!(matches!(cli.run.agent_mode, crate::AgentMode::Build));
+}
+
+#[test]
+fn planner_mode_and_agent_mode_can_be_set_together() {
+    let cli = Cli::parse_from([
+        "localagent",
+        "--mode",
+        "planner-worker",
+        "--agent-mode",
+        "plan",
+    ]);
+    assert!(matches!(
+        cli.run.mode,
+        crate::planner::RunMode::PlannerWorker
+    ));
+    assert!(matches!(cli.run.agent_mode, crate::AgentMode::Plan));
+}
+
+#[test]
+fn agent_mode_plan_disables_shell_and_write_by_default() {
+    let mut args = default_run_args();
+    args.agent_mode = crate::AgentMode::Plan;
+    super::runtime_flags::apply_agent_mode_capability_baseline(
+        &mut args,
+        super::runtime_flags::CapabilityExplicitFlags::default(),
+    );
+    assert!(!args.allow_shell);
+    assert!(!args.allow_shell_in_workdir);
+    assert!(!args.allow_write);
+    assert!(!args.enable_write_tools);
+}
+
+#[test]
+fn agent_mode_plan_respects_explicit_overrides() {
+    let mut args = default_run_args();
+    args.agent_mode = crate::AgentMode::Plan;
+    args.allow_shell = true;
+    args.allow_shell_in_workdir = true;
+    args.allow_write = true;
+    args.enable_write_tools = true;
+    super::runtime_flags::apply_agent_mode_capability_baseline(
+        &mut args,
+        super::runtime_flags::CapabilityExplicitFlags {
+            allow_shell: true,
+            allow_shell_in_workdir: true,
+            allow_write: true,
+            enable_write_tools: true,
+        },
+    );
+    assert!(args.allow_shell);
+    assert!(args.allow_shell_in_workdir);
+    assert!(args.allow_write);
+    assert!(args.enable_write_tools);
+}
+
+#[test]
+fn agent_mode_does_not_mutate_provider_or_model_resolution() {
+    let mut args = default_run_args();
+    args.provider = Some(crate::ProviderKind::Lmstudio);
+    args.model = Some("m".to_string());
+    args.base_url = Some("http://localhost:1234/v1".to_string());
+    args.agent_mode = crate::AgentMode::Plan;
+    super::runtime_flags::apply_agent_mode_capability_baseline(
+        &mut args,
+        super::runtime_flags::CapabilityExplicitFlags::default(),
+    );
+    assert!(matches!(args.provider, Some(crate::ProviderKind::Lmstudio)));
+    assert_eq!(args.model.as_deref(), Some("m"));
+    assert_eq!(args.base_url.as_deref(), Some("http://localhost:1234/v1"));
+}
+
+#[test]
+fn run_cli_config_persists_agent_mode() {
+    let args = default_run_args();
+    let resolved = crate::session::RunSettingResolution {
+        max_context_chars: 0,
+        compaction_mode: crate::compaction::CompactionMode::Off,
+        compaction_keep_last: 20,
+        tool_result_persist: crate::compaction::ToolResultPersist::Digest,
+        tool_args_strict: crate::tools::ToolArgsStrict::On,
+        caps_mode: crate::session::CapsMode::Off,
+        hooks_mode: crate::hooks::config::HooksMode::Off,
+        sources: std::collections::BTreeMap::new(),
+    };
+    let cli = crate::runtime_paths::build_run_cli_config(crate::runtime_paths::RunCliConfigInput {
+        provider_kind: crate::ProviderKind::Mock,
+        base_url: "http://localhost:1",
+        model: "mock-model",
+        args: &args,
+        resolved_settings: &resolved,
+        hooks_config_path: std::path::Path::new("hooks.yaml"),
+        mcp_config_path: std::path::Path::new("mcp_servers.json"),
+        tool_catalog: Vec::new(),
+        mcp_tool_snapshot: Vec::new(),
+        mcp_tool_catalog_hash_hex: None,
+        policy_version: None,
+        includes_resolved: Vec::new(),
+        mcp_allowlist: None,
+        mode: crate::planner::RunMode::Single,
+        planner_model: None,
+        worker_model: None,
+        planner_max_steps: None,
+        planner_output: None,
+        planner_strict: None,
+        enforce_plan_tools: None,
+        instructions: &crate::instructions::InstructionResolution::empty(),
+        project_guidance: None,
+        repo_map: None,
+        activated_packs: &[],
+    });
+    assert_eq!(cli.agent_mode, "build");
+}
+
 fn default_run_args() -> super::RunArgs {
     super::RunArgs {
         provider: None,
@@ -772,6 +889,8 @@ fn default_run_args() -> super::RunArgs {
         allow_write: false,
 
         enable_write_tools: false,
+
+        agent_mode: crate::AgentMode::Build,
 
         exec_target: ExecTargetKind::Host,
 

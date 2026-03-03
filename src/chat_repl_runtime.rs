@@ -127,7 +127,7 @@ pub(crate) async fn run_chat_repl(
                 "/mode" => {
                     println!(
                         "current mode: {} (use /mode <safe|coding|web|custom>)",
-                        chat_runtime::chat_mode_label(&active_run)
+                        chat_runtime::chat_mode_display_label(&active_run)
                     );
                 }
                 "/timeout" => {
@@ -185,7 +185,7 @@ pub(crate) async fn run_chat_repl(
                     if runtime_config::apply_chat_mode(&mut active_run, mode).is_some() {
                         println!(
                             "mode switched to {}",
-                            chat_runtime::chat_mode_label(&active_run)
+                            chat_runtime::chat_mode_display_label(&active_run)
                         );
                     } else {
                         println!("unknown mode: {mode}. expected safe|coding|web|custom");

@@ -1,5 +1,6 @@
 use crossterm::event::{KeyModifiers, MouseEvent, MouseEventKind};
 
+use crate::AgentMode;
 use crate::RunArgs;
 
 pub(crate) fn is_text_input_mods(mods: KeyModifiers) -> bool {
@@ -80,4 +81,19 @@ pub(crate) fn chat_mode_label(run: &RunArgs) -> &'static str {
     } else {
         "Custom"
     }
+}
+
+pub(crate) fn agent_mode_label(mode: AgentMode) -> &'static str {
+    match mode {
+        AgentMode::Build => "Build",
+        AgentMode::Plan => "Plan",
+    }
+}
+
+pub(crate) fn chat_mode_display_label(run: &RunArgs) -> String {
+    format!(
+        "{} · Agent: {}",
+        chat_mode_label(run),
+        agent_mode_label(run.agent_mode)
+    )
 }

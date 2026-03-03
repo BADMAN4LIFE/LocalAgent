@@ -24,6 +24,7 @@ fn sorted_object_keys(obj: &Map<String, Value>) -> Vec<String> {
 fn build_run_cli_config() -> RunCliConfig {
     RunCliConfig {
         mode: "single".to_string(),
+        agent_mode: "build".to_string(),
         provider: "ollama".to_string(),
         base_url: "http://localhost:11434".to_string(),
         model: "test-model".to_string(),

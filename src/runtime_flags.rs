@@ -1,6 +1,16 @@
 use crate::agent::PlanToolEnforcementMode;
+use crate::cli_args::AgentMode;
 use crate::planner::RunMode;
 use crate::session::ExplicitFlags;
+use crate::RunArgs;
+
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct CapabilityExplicitFlags {
+    pub allow_shell: bool,
+    pub allow_shell_in_workdir: bool,
+    pub allow_write: bool,
+    pub enable_write_tools: bool,
+}
 
 pub(crate) fn parse_explicit_flags() -> ExplicitFlags {
     let mut out = ExplicitFlags::default();
@@ -27,6 +37,45 @@ pub(crate) fn parse_explicit_flags() -> ExplicitFlags {
 pub(crate) fn has_explicit_plan_tool_enforcement_flag() -> bool {
     std::env::args()
         .any(|arg| arg == "--enforce-plan-tools" || arg.starts_with("--enforce-plan-tools="))
+}
+
+pub(crate) fn parse_capability_explicit_flags() -> CapabilityExplicitFlags {
+    let mut out = CapabilityExplicitFlags::default();
+    for arg in std::env::args() {
+        if arg == "--allow-shell" || arg.starts_with("--allow-shell=") {
+            out.allow_shell = true;
+        } else if arg == "--allow-shell-in-workdir" || arg.starts_with("--allow-shell-in-workdir=")
+        {
+            out.allow_shell_in_workdir = true;
+        } else if arg == "--allow-write" || arg.starts_with("--allow-write=") {
+            out.allow_write = true;
+        } else if arg == "--enable-write-tools" || arg.starts_with("--enable-write-tools=") {
+            out.enable_write_tools = true;
+        }
+    }
+    out
+}
+
+pub(crate) fn apply_agent_mode_capability_baseline(
+    args: &mut RunArgs,
+    explicit: CapabilityExplicitFlags,
+) {
+    if !matches!(args.agent_mode, AgentMode::Plan) {
+        return;
+    }
+
+    if !explicit.enable_write_tools {
+        args.enable_write_tools = false;
+    }
+    if !explicit.allow_write {
+        args.allow_write = false;
+    }
+    if !explicit.allow_shell {
+        args.allow_shell = false;
+    }
+    if !explicit.allow_shell_in_workdir {
+        args.allow_shell_in_workdir = false;
+    }
 }
 
 pub(crate) fn resolve_plan_tool_enforcement(
