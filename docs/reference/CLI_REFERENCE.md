@@ -143,6 +143,7 @@ localagent --provider lmstudio --model <model> chat --tui
 
 - `--caps <auto|off|strict>` (default: `off`)
 - `--stream`
+- `--output <human|json>` (default: `human`)
 - `--events <PATH>`
 
 ### Provider HTTP Resilience
@@ -178,6 +179,11 @@ localagent run
 ```
 
 Runs one-shot execution using global flags (`--prompt` required for practical use).
+
+JSON output mode:
+- `--output json` emits JSONL run events (`openagent.run_event.v1`) to stdout.
+- `--output json` is non-interactive and cannot be combined with `--tui`.
+- `--events <PATH>` still writes internal event JSONL independently of `--output`.
 
 ### `exec`
 

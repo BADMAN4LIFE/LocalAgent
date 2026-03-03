@@ -1181,6 +1181,9 @@ pub(crate) struct RunArgs {
     #[arg(long, default_value_t = false)]
     pub(crate) stream: bool,
 
+    #[arg(long, value_enum, default_value_t = RunOutputMode::Human)]
+    pub(crate) output: RunOutputMode,
+
     #[arg(long)]
     pub(crate) events: Option<PathBuf>,
 
@@ -1250,6 +1253,12 @@ pub(crate) enum AgentMode {
     Build,
 
     Plan,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub(crate) enum RunOutputMode {
+    Human,
+    Json,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]

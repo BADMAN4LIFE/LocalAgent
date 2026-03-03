@@ -268,6 +268,7 @@ mod tests {
             RunCliConfig {
                 mode: "single".to_string(),
                 agent_mode: "build".to_string(),
+                output_mode: "human".to_string(),
                 provider: "ollama".to_string(),
                 base_url: "http://localhost:11434".to_string(),
                 model: "m".to_string(),
@@ -480,6 +481,7 @@ mod tests {
             cli: RunCliConfig {
                 mode: "planner_worker".to_string(),
                 agent_mode: "build".to_string(),
+                output_mode: "human".to_string(),
                 provider: "ollama".to_string(),
                 base_url: "http://localhost:11434".to_string(),
                 model: "w".to_string(),

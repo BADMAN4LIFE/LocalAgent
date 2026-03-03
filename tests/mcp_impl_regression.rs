@@ -304,6 +304,7 @@ fn minimal_cli_config_for_mcp_test() -> RunCliConfig {
     RunCliConfig {
         mode: "single".to_string(),
         agent_mode: "build".to_string(),
+        output_mode: "human".to_string(),
         provider: "mock".to_string(),
         base_url: "http://localhost".to_string(),
         model: "mock-model".to_string(),

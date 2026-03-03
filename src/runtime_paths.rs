@@ -109,6 +109,7 @@ pub(crate) fn build_run_cli_config(input: RunCliConfigInput<'_>) -> RunCliConfig
     RunCliConfig {
         mode: format!("{:?}", mode).to_lowercase(),
         agent_mode: format!("{:?}", args.agent_mode).to_lowercase(),
+        output_mode: format!("{:?}", args.output).to_lowercase(),
         provider: provider_to_string(provider_kind),
         base_url: base_url.to_string(),
         model: model.to_string(),

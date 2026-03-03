@@ -32,8 +32,14 @@ pub(crate) async fn run_tasks_graph(
 
     let graph_run_id = uuid::Uuid::new_v4().to_string();
     let graph_started = trust::now_rfc3339();
-    let mut sink =
-        runtime_wiring::build_event_sink(false, base_run.events.as_deref(), false, None, false)?;
+    let mut sink = runtime_wiring::build_event_sink(
+        false,
+        crate::RunOutputMode::Human,
+        base_run.events.as_deref(),
+        false,
+        None,
+        false,
+    )?;
     runtime_events::emit_event(
         &mut sink,
         &graph_run_id,

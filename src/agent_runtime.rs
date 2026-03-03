@@ -990,7 +990,7 @@ pub(crate) async fn run_agent_with_ui<P: ModelProvider>(
             if !outcome.final_output.is_empty() {
                 println!("{}", outcome.final_output);
             }
-        } else if !args.stream {
+        } else if !args.stream && !matches!(args.output, crate::RunOutputMode::Json) {
             println!("{}", outcome.final_output);
         }
     }
@@ -1746,6 +1746,7 @@ fn build_ui_runtime_setup(input: UiRuntimeSetupInput<'_>) -> anyhow::Result<UiRu
     };
     let event_sink = runtime_wiring::build_event_sink(
         input.args.stream,
+        input.args.output,
         input.args.events.as_deref(),
         input.args.tui,
         ui_tx,

@@ -728,6 +728,18 @@ fn agent_mode_defaults_to_build() {
 }
 
 #[test]
+fn output_mode_defaults_to_human() {
+    let cli = Cli::parse_from(["localagent"]);
+    assert!(matches!(cli.run.output, crate::RunOutputMode::Human));
+}
+
+#[test]
+fn output_mode_json_parses() {
+    let cli = Cli::parse_from(["localagent", "--output", "json"]);
+    assert!(matches!(cli.run.output, crate::RunOutputMode::Json));
+}
+
+#[test]
 fn planner_mode_and_agent_mode_can_be_set_together() {
     let cli = Cli::parse_from([
         "localagent",
@@ -797,6 +809,17 @@ fn agent_mode_does_not_mutate_provider_or_model_resolution() {
 }
 
 #[test]
+fn output_mode_json_rejects_tui_with_clear_error() {
+    let mut args = default_run_args();
+    args.output = crate::RunOutputMode::Json;
+    args.tui = true;
+    let err = super::cli_dispatch::validate_run_output_mode(&args).expect_err("must fail");
+    assert!(err
+        .to_string()
+        .contains("--output json is incompatible with --tui"));
+}
+
+#[test]
 fn run_cli_config_persists_agent_mode() {
     let args = default_run_args();
     let resolved = crate::session::RunSettingResolution {
@@ -836,6 +859,7 @@ fn run_cli_config_persists_agent_mode() {
         activated_packs: &[],
     });
     assert_eq!(cli.agent_mode, "build");
+    assert_eq!(cli.output_mode, "human");
 }
 
 fn default_run_args() -> super::RunArgs {
@@ -984,6 +1008,8 @@ fn default_run_args() -> super::RunArgs {
         caps: crate::session::CapsMode::Off,
 
         stream: false,
+
+        output: crate::RunOutputMode::Human,
 
         events: None,
 

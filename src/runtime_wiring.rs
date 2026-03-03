@@ -2,25 +2,35 @@ use std::sync::mpsc::Sender;
 
 use anyhow::Context;
 
-use crate::events::{Event, EventSink, JsonlFileSink, MultiSink, StdoutSink};
+use crate::events::{
+    Event, EventSink, JsonStdoutProjectedSink, JsonlFileSink, MultiSink, StdoutSink,
+};
 use crate::gate::{compute_policy_hash_hex, NoGate, ToolGate, TrustGate, TrustMode};
 use crate::store;
 use crate::trust;
 use crate::trust::approvals::ApprovalsStore;
 use crate::trust::audit::AuditLog;
 use crate::trust::policy::{McpAllowSummary, Policy};
-use crate::RunArgs;
+use crate::{RunArgs, RunOutputMode};
 
 pub(crate) fn build_event_sink(
     stream: bool,
+    output_mode: RunOutputMode,
     events_path: Option<&std::path::Path>,
     tui_enabled: bool,
     ui_tx: Option<Sender<Event>>,
     suppress_stdout: bool,
 ) -> anyhow::Result<Option<Box<dyn EventSink>>> {
     let mut multi = MultiSink::new();
-    if stream && !tui_enabled && !suppress_stdout {
-        multi.push(Box::new(StdoutSink::new()));
+    if !tui_enabled && !suppress_stdout {
+        match output_mode {
+            RunOutputMode::Json => multi.push(Box::new(JsonStdoutProjectedSink::new())),
+            RunOutputMode::Human => {
+                if stream {
+                    multi.push(Box::new(StdoutSink::new()));
+                }
+            }
+        }
     }
     if let Some(tx) = ui_tx {
         multi.push(Box::new(crate::tui::UiSink::new(tx)));

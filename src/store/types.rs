@@ -11,6 +11,10 @@ pub(crate) fn default_agent_mode() -> String {
     "build".to_string()
 }
 
+pub(crate) fn default_output_mode() -> String {
+    "human".to_string()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RunRecord {
     pub metadata: RunMetadata,
@@ -170,6 +174,8 @@ pub struct RunCliConfig {
     pub mode: String,
     #[serde(default = "default_agent_mode")]
     pub agent_mode: String,
+    #[serde(default = "default_output_mode")]
+    pub output_mode: String,
     pub provider: String,
     pub base_url: String,
     pub model: String,

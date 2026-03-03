@@ -7,10 +7,11 @@ use super::RunRecord;
 pub fn render_replay(record: &RunRecord) -> String {
     let mut out = String::new();
     out.push_str(&format!(
-        "run_id: {}\nmode: {}\nagent_mode: {}\nprovider: {}\nmodel: {}\nexit_reason: {}\nPolicy hash: {}\nConfig hash: {}\napproval_mode: {}\nauto_approve_scope: {}\nunsafe: {}\nno_limits: {}\nunsafe_bypass_allow_flags: {}\n",
+        "run_id: {}\nmode: {}\nagent_mode: {}\noutput_mode: {}\nprovider: {}\nmodel: {}\nexit_reason: {}\nPolicy hash: {}\nConfig hash: {}\napproval_mode: {}\nauto_approve_scope: {}\nunsafe: {}\nno_limits: {}\nunsafe_bypass_allow_flags: {}\n",
         record.metadata.run_id,
         record.mode,
         record.cli.agent_mode,
+        record.cli.output_mode,
         record.cli.provider,
         record.cli.model,
         record.metadata.exit_reason,

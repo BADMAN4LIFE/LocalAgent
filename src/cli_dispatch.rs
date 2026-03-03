@@ -404,6 +404,8 @@ pub(crate) async fn run_cli() -> anyhow::Result<()> {
         return Ok(());
     }
 
+    validate_run_output_mode(&cli.run)?;
+
     let provider_kind = cli
         .run
         .provider
@@ -429,13 +431,19 @@ pub(crate) async fn run_cli() -> anyhow::Result<()> {
 
     match provider_kind {
         ProviderKind::Lmstudio | ProviderKind::Llamacpp => {
-            let provider = OpenAiCompatProvider::new(
+            let provider = match OpenAiCompatProvider::new(
                 base_url.clone(),
                 cli.run.api_key.clone(),
                 provider_runtime::http_config_from_run_args(&cli.run),
-            )?;
+            ) {
+                Ok(p) => p,
+                Err(e) => {
+                    maybe_emit_pre_run_json_failure(&cli.run, &e.to_string());
+                    return Err(e);
+                }
+            };
 
-            let res = run_agent(
+            let res = match run_agent(
                 provider,
                 provider_kind,
                 &base_url,
@@ -444,7 +452,14 @@ pub(crate) async fn run_cli() -> anyhow::Result<()> {
                 &cli.run,
                 &paths,
             )
-            .await?;
+            .await
+            {
+                Ok(v) => v,
+                Err(e) => {
+                    maybe_emit_pre_run_json_failure(&cli.run, &e.to_string());
+                    return Err(e);
+                }
+            };
 
             if matches!(res.outcome.exit_reason, AgentExitReason::ProviderError) {
                 let err = res
@@ -471,12 +486,18 @@ pub(crate) async fn run_cli() -> anyhow::Result<()> {
         }
 
         ProviderKind::Ollama => {
-            let provider = OllamaProvider::new(
+            let provider = match OllamaProvider::new(
                 base_url.clone(),
                 provider_runtime::http_config_from_run_args(&cli.run),
-            )?;
+            ) {
+                Ok(p) => p,
+                Err(e) => {
+                    maybe_emit_pre_run_json_failure(&cli.run, &e.to_string());
+                    return Err(e);
+                }
+            };
 
-            let res = run_agent(
+            let res = match run_agent(
                 provider,
                 provider_kind,
                 &base_url,
@@ -485,7 +506,14 @@ pub(crate) async fn run_cli() -> anyhow::Result<()> {
                 &cli.run,
                 &paths,
             )
-            .await?;
+            .await
+            {
+                Ok(v) => v,
+                Err(e) => {
+                    maybe_emit_pre_run_json_failure(&cli.run, &e.to_string());
+                    return Err(e);
+                }
+            };
 
             if matches!(res.outcome.exit_reason, AgentExitReason::ProviderError) {
                 let err = res
@@ -514,7 +542,7 @@ pub(crate) async fn run_cli() -> anyhow::Result<()> {
         ProviderKind::Mock => {
             let provider = MockProvider::new();
 
-            let _ = run_agent(
+            let _ = match run_agent(
                 provider,
                 provider_kind,
                 &base_url,
@@ -523,7 +551,14 @@ pub(crate) async fn run_cli() -> anyhow::Result<()> {
                 &cli.run,
                 &paths,
             )
-            .await?;
+            .await
+            {
+                Ok(v) => v,
+                Err(e) => {
+                    maybe_emit_pre_run_json_failure(&cli.run, &e.to_string());
+                    return Err(e);
+                }
+            };
         }
     }
 
@@ -540,4 +575,23 @@ pub(crate) fn validate_sampling_args(run: &RunArgs) -> anyhow::Result<()> {
         return Err(anyhow!("--max-tokens must be > 0"));
     }
     Ok(())
+}
+
+pub(crate) fn validate_run_output_mode(run: &RunArgs) -> anyhow::Result<()> {
+    if run.tui && matches!(run.output, RunOutputMode::Json) {
+        return Err(anyhow!(
+            "--output json is incompatible with --tui; use --output human or disable --tui"
+        ));
+    }
+    Ok(())
+}
+
+fn maybe_emit_pre_run_json_failure(run: &RunArgs, message: &str) {
+    if !matches!(run.output, RunOutputMode::Json) {
+        return;
+    }
+    let projected = crate::events::projected_pre_run_failure_v1(message);
+    if let Ok(line) = serde_json::to_string(&projected) {
+        println!("{line}");
+    }
 }

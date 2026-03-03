@@ -1007,6 +1007,7 @@ fn write_run_artifact_for_eval(
     let cli_config = RunCliConfig {
         mode: format!("{:?}", config.mode).to_lowercase(),
         agent_mode: "build".to_string(),
+        output_mode: "human".to_string(),
         provider: provider_to_string(config.provider),
         base_url: config.base_url.clone(),
         model: model.to_string(),
