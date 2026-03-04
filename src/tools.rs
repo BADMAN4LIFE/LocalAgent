@@ -1362,7 +1362,10 @@ fn is_windows_shell_builtin(cmd: &str) -> bool {
     )
 }
 
-fn annotate_shell_repair(mut out: crate::target::TargetResult, strategy: &str) -> crate::target::TargetResult {
+fn annotate_shell_repair(
+    mut out: crate::target::TargetResult,
+    strategy: &str,
+) -> crate::target::TargetResult {
     if let Ok(mut v) = serde_json::from_str::<Value>(&out.content) {
         if let Some(obj) = v.as_object_mut() {
             obj.insert("repair_attempted".to_string(), Value::Bool(true));
@@ -1610,7 +1613,10 @@ fn classify_shell_target_error(content: &str, exit_code: Option<i32>) -> ToolErr
 
 fn shell_status_code_from_content(content: &str) -> Option<i32> {
     let parsed = serde_json::from_str::<Value>(content).ok()?;
-    parsed.get("status").and_then(|v| v.as_i64()).map(|n| n as i32)
+    parsed
+        .get("status")
+        .and_then(|v| v.as_i64())
+        .map(|n| n as i32)
 }
 
 fn base_meta(rt: &ToolRuntime, side_effects: SideEffects) -> ToolResultMeta {
@@ -1656,8 +1662,8 @@ mod tests {
 
     use super::{
         builtin_tools_enabled, execute_tool, normalize_builtin_tool_args, resolve_path,
-        tool_side_effects,
-        validate_builtin_tool_args, validate_schema_args, ToolArgsStrict, ToolRuntime,
+        tool_side_effects, validate_builtin_tool_args, validate_schema_args, ToolArgsStrict,
+        ToolRuntime,
     };
     use crate::target::{ExecTargetKind, HostTarget};
     use crate::types::{SideEffects, ToolCall};

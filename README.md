@@ -190,7 +190,7 @@ localagent --provider lmstudio --model <model> learn capture --assist --category
 localagent --provider lmstudio --model <model> learn capture --assist --write --category prompt-guidance --summary "..."
 ```
 
-<img width="1093" height="LocalAgent chat TUI showing Code mode, connected LM Studio provider, command hints, and cwd footer (C:\\demo)." alt="Screenshot 2026-02-25 145358" src="https://github.com/user-attachments/assets/1b2c6f7e-9869-46bc-8ec8-24b70ae23268" />
+<img width="1093" height="581" alt="LocalAgent chat TUI showing Code mode, connected LM Studio provider, command hints, and cwd footer (C:\demo)." src="https://github.com/user-attachments/assets/1b2c6f7e-9869-46bc-8ec8-24b70ae23268" />
 
 Startup screen controls:
 
@@ -274,6 +274,7 @@ In chat TUI:
 - `Ctrl+A`: approve selected request
 - `Ctrl+X`: deny selected request
 - `Ctrl+R`: refresh approvals
+- `Ctrl+O`: toggle assistant thinking blocks
 - `/`: open slash-command dropdown
 - `/mode <safe|coding|web|custom>`: switch chat runtime mode
 - `/timeout [seconds|+N|-N|off]`: show and adjust request/stream idle timeout for slow generations
@@ -282,6 +283,11 @@ In chat TUI:
 - `/learn list|show|archive|capture|promote`: learning workflows from TUI logs pane
 - `/learn`: open the Learn Overlay (beginner flow)
 - `?`: show keybind help dropdown
+
+Active-run behavior note:
+
+- `Esc` during an active run cancels the in-progress turn.
+- `Esc` when idle exits chat.
 
 Mode naming note:
 
