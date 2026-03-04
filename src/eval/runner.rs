@@ -817,11 +817,33 @@ async fn run_single(
     let hooks_config_hash_hex =
         compute_hooks_config_hash_hex(config.hooks_mode, &resolved_hooks_config_path);
 
+    let is_c2 = task.id == "C2";
+    let task_max_steps = if is_c2 {
+        std::cmp::min(config.max_steps, 6).max(1)
+    } else {
+        config.max_steps
+    };
+    let task_max_wall_time_ms = if is_c2 {
+        if config.max_wall_time_ms == 0 {
+            45_000
+        } else {
+            std::cmp::min(config.max_wall_time_ms, 45_000)
+        }
+    } else {
+        config.max_wall_time_ms
+    };
+    let task_max_tokens = if is_c2 { Some(256) } else { None };
+    let mut task_http = config.http;
+    if is_c2
+        && (task_http.stream_idle_timeout_ms == 0 || task_http.stream_idle_timeout_ms > 15_000)
+    {
+        task_http.stream_idle_timeout_ms = 15_000;
+    }
     let provider = make_provider(
         config.provider,
         &config.base_url,
         config.api_key.clone(),
-        config.http,
+        task_http,
     )?;
     let captured_events = std::sync::Arc::new(std::sync::Mutex::new(Vec::<Event>::new()));
     let mut agent = Agent {
@@ -829,10 +851,10 @@ async fn run_single(
         model: model.to_string(),
         temperature: None,
         top_p: None,
-        max_tokens: None,
+        max_tokens: task_max_tokens,
         seed: None,
         tools,
-        max_steps: config.max_steps,
+        max_steps: task_max_steps,
         tool_rt: ToolRuntime {
             workdir: workdir.to_path_buf(),
             allow_shell: config.allow_shell,
@@ -880,7 +902,7 @@ async fn run_single(
         mcp_pin_enforcement: crate::agent::McpPinEnforcementMode::Hard,
         plan_step_constraints: Vec::new(),
         tool_call_budget: ToolCallBudget {
-            max_wall_time_ms: config.max_wall_time_ms,
+            max_wall_time_ms: task_max_wall_time_ms,
             max_total_tool_calls: 0,
             max_mcp_calls: config.max_mcp_calls,
             max_filesystem_read_calls: 0,
@@ -896,7 +918,7 @@ async fn run_single(
     };
     let session_messages = Vec::new();
     let mut injected_messages = Vec::new();
-    if task.id == "C2" {
+    if is_c2 {
         injected_messages.push(Message {
             role: Role::System,
             content: Some("INTERNAL_FLAG:allow_skip_post_write_verification".to_string()),

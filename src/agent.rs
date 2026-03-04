@@ -5,6 +5,7 @@ use uuid::Uuid;
 
 use crate::agent_impl_guard::{
     implementation_integrity_violation_with_tool_executions, normalize_tool_path,
+    pending_post_write_verification_paths,
     prompt_requires_tool_only,
     ToolExecutionRecord,
 };
@@ -1840,6 +1841,75 @@ Fallback when native tool calls are unavailable:\n\
                     } else {
                         assistant.content.unwrap_or_default()
                     };
+                if !allow_skip_post_write_verification {
+                    let pending_post_write_paths =
+                        pending_post_write_verification_paths(&observed_tool_executions);
+                    for path in pending_post_write_paths {
+                        let verify = self
+                            .tool_rt
+                            .exec_target
+                            .read_file(crate::target::ReadReq {
+                                workdir: self.tool_rt.workdir.clone(),
+                                path: path.clone(),
+                                max_read_bytes: self.tool_rt.max_read_bytes,
+                            })
+                            .await;
+                        observed_tool_executions.push(ToolExecutionRecord {
+                            name: "read_file".to_string(),
+                            path: Some(path.clone()),
+                            ok: verify.ok,
+                        });
+                        if !verify.ok {
+                            let reason = format!(
+                                "implementation guard: runtime post-write verification failed read_file on '{path}': {}",
+                                verify.content
+                            );
+                            self.emit_event(
+                                &run_id,
+                                step as u32,
+                                EventKind::Error,
+                                serde_json::json!({
+                                    "error": reason,
+                                    "source": "implementation_integrity_guard"
+                                }),
+                            );
+                            self.emit_event(
+                                &run_id,
+                                step as u32,
+                                EventKind::RunEnd,
+                                serde_json::json!({"exit_reason":"planner_error"}),
+                            );
+                            return AgentOutcome {
+                                run_id,
+                                started_at,
+                                finished_at: crate::trust::now_rfc3339(),
+                                exit_reason: AgentExitReason::PlannerError,
+                                final_output: String::new(),
+                                error: Some(reason),
+                                messages,
+                                tool_calls: observed_tool_calls,
+                                tool_decisions: observed_tool_decisions,
+                                compaction_settings: self.compaction_settings.clone(),
+                                final_prompt_size_chars: request_context_chars,
+                                compaction_report: last_compaction_report,
+                                hook_invocations,
+                                provider_retry_count,
+                                provider_error_count,
+                                token_usage: if saw_token_usage {
+                                    Some(total_token_usage.clone())
+                                } else {
+                                    None
+                                },
+                                taint: taint_record_from_state(
+                                    self.taint_toggle,
+                                    self.taint_mode,
+                                    self.taint_digest_bytes,
+                                    &taint_state,
+                                ),
+                            };
+                        }
+                    }
+                }
                 if let Some(reason) = implementation_integrity_violation_with_tool_executions(
                     user_prompt,
                     &final_output,

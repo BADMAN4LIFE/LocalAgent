@@ -100,6 +100,31 @@ pub(crate) fn implementation_integrity_violation_with_tool_executions(
     None
 }
 
+pub(crate) fn pending_post_write_verification_paths(
+    tool_executions: &[ToolExecutionRecord],
+) -> std::collections::BTreeSet<String> {
+    let mut pending_post_write_verification = std::collections::BTreeSet::<String>::new();
+    for execution in tool_executions {
+        if !execution.ok {
+            continue;
+        }
+        match execution.name.as_str() {
+            "read_file" => {
+                if let Some(path) = &execution.path {
+                    pending_post_write_verification.remove(path);
+                }
+            }
+            "apply_patch" | "write_file" => {
+                if let Some(path) = &execution.path {
+                    pending_post_write_verification.insert(path.clone());
+                }
+            }
+            _ => {}
+        }
+    }
+    pending_post_write_verification
+}
+
 pub(crate) fn normalize_tool_path(path: &str) -> String {
     let mut out: Vec<&str> = Vec::new();
     for part in path.split(['/', '\\']) {

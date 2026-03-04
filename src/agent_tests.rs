@@ -631,6 +631,35 @@ fn implementation_guard_accepts_dot_prefixed_post_write_read_back() {
 }
 
 #[test]
+fn pending_post_write_verification_paths_tracks_only_unverified_writes() {
+    let executions = vec![
+        crate::agent_impl_guard::ToolExecutionRecord {
+            name: "read_file".to_string(),
+            path: Some("a.rs".to_string()),
+            ok: true,
+        },
+        crate::agent_impl_guard::ToolExecutionRecord {
+            name: "apply_patch".to_string(),
+            path: Some("a.rs".to_string()),
+            ok: true,
+        },
+        crate::agent_impl_guard::ToolExecutionRecord {
+            name: "write_file".to_string(),
+            path: Some("b.rs".to_string()),
+            ok: true,
+        },
+        crate::agent_impl_guard::ToolExecutionRecord {
+            name: "read_file".to_string(),
+            path: Some("a.rs".to_string()),
+            ok: true,
+        },
+    ];
+    let pending = crate::agent_impl_guard::pending_post_write_verification_paths(&executions);
+    assert_eq!(pending.len(), 1);
+    assert!(pending.contains("b.rs"));
+}
+
+#[test]
 fn wrapped_tool_call_content_is_parsed() {
     let raw =
         "[TOOL_CALL]\n{\"name\":\"list_dir\",\"arguments\":{\"path\":\".\"}}\n[END_TOOL_CALL]";
@@ -889,6 +918,63 @@ impl ModelProvider for CountingNoToolProvider {
             tool_calls: Vec::new(),
             usage: None,
         })
+    }
+}
+
+struct ReadPatchThenDoneProvider {
+    calls: Arc<AtomicUsize>,
+}
+
+#[async_trait]
+impl ModelProvider for ReadPatchThenDoneProvider {
+    async fn generate(&self, _req: GenerateRequest) -> anyhow::Result<GenerateResponse> {
+        let n = self.calls.fetch_add(1, Ordering::SeqCst);
+        match n {
+            0 => Ok(GenerateResponse {
+                assistant: Message {
+                    role: Role::Assistant,
+                    content: Some(String::new()),
+                    tool_call_id: None,
+                    tool_name: None,
+                    tool_calls: None,
+                },
+                tool_calls: vec![crate::types::ToolCall {
+                    id: "tc_read".to_string(),
+                    name: "read_file".to_string(),
+                    arguments: serde_json::json!({"path":"main.rs"}),
+                }],
+                usage: None,
+            }),
+            1 => Ok(GenerateResponse {
+                assistant: Message {
+                    role: Role::Assistant,
+                    content: Some(String::new()),
+                    tool_call_id: None,
+                    tool_name: None,
+                    tool_calls: None,
+                },
+                tool_calls: vec![crate::types::ToolCall {
+                    id: "tc_patch".to_string(),
+                    name: "apply_patch".to_string(),
+                    arguments: serde_json::json!({
+                        "path":"main.rs",
+                        "patch":"@@ -1,3 +1,3 @@\n fn answer() -> i32 {\n-    return 1;\n+    return 2;\n }\n"
+                    }),
+                }],
+                usage: None,
+            }),
+            _ => Ok(GenerateResponse {
+                assistant: Message {
+                    role: Role::Assistant,
+                    content: Some("done".to_string()),
+                    tool_call_id: None,
+                    tool_name: None,
+                    tool_calls: None,
+                },
+                tool_calls: Vec::new(),
+                usage: None,
+            }),
+        }
     }
 }
 
@@ -2436,6 +2522,127 @@ async fn repeated_invalid_patch_format_fails_fast_with_protocol_violation() {
         .filter(|e| matches!(e.kind, crate::events::EventKind::ToolExecEnd))
         .count();
     assert_eq!(starts, ends, "tool exec start/end mismatch");
+}
+
+#[tokio::test]
+async fn runtime_post_write_verification_allows_finalize_without_model_read_back() {
+    let tmp = tempfile::tempdir().expect("tmp");
+    tokio::fs::write(
+        tmp.path().join("main.rs"),
+        "fn answer() -> i32 {\n    return 1;\n}\n",
+    )
+    .await
+    .expect("seed");
+    let calls = Arc::new(AtomicUsize::new(0));
+    let mut agent = Agent {
+        provider: ReadPatchThenDoneProvider {
+            calls: calls.clone(),
+        },
+        model: "m".to_string(),
+        temperature: None,
+        top_p: None,
+        max_tokens: None,
+        seed: None,
+        tools: vec![
+            crate::types::ToolDef {
+                name: "read_file".to_string(),
+                description: "d".to_string(),
+                parameters: serde_json::json!({
+                    "type":"object",
+                    "properties":{"path":{"type":"string"}},
+                    "required":["path"]
+                }),
+                side_effects: crate::types::SideEffects::FilesystemRead,
+            },
+            crate::types::ToolDef {
+                name: "apply_patch".to_string(),
+                description: "d".to_string(),
+                parameters: serde_json::json!({
+                    "type":"object",
+                    "properties":{"path":{"type":"string"},"patch":{"type":"string"}},
+                    "required":["path","patch"]
+                }),
+                side_effects: crate::types::SideEffects::FilesystemWrite,
+            },
+        ],
+        max_steps: 6,
+        tool_rt: ToolRuntime {
+            workdir: tmp.path().to_path_buf(),
+            allow_shell: false,
+            allow_shell_in_workdir_only: false,
+            allow_write: true,
+            max_tool_output_bytes: 200_000,
+            max_read_bytes: 200_000,
+            unsafe_bypass_allow_flags: false,
+            tool_args_strict: ToolArgsStrict::On,
+            exec_target_kind: ExecTargetKind::Host,
+            exec_target: std::sync::Arc::new(HostTarget),
+        },
+        gate: Box::new(NoGate::new()),
+        gate_ctx: GateContext {
+            workdir: tmp.path().to_path_buf(),
+            allow_shell: false,
+            allow_write: true,
+            approval_mode: ApprovalMode::Interrupt,
+            auto_approve_scope: AutoApproveScope::Run,
+            unsafe_mode: false,
+            unsafe_bypass_allow_flags: false,
+            run_id: None,
+            enable_write_tools: true,
+            max_tool_output_bytes: 200_000,
+            max_read_bytes: 200_000,
+            provider: ProviderKind::Ollama,
+            model: "m".to_string(),
+            exec_target: ExecTargetKind::Host,
+            approval_key_version: crate::gate::ApprovalKeyVersion::V1,
+            tool_schema_hashes: std::collections::BTreeMap::new(),
+            hooks_config_hash_hex: None,
+            planner_hash_hex: None,
+            taint_enabled: false,
+            taint_mode: crate::taint::TaintMode::Propagate,
+            taint_overall: crate::taint::TaintLevel::Clean,
+            taint_sources: Vec::new(),
+        },
+        mcp_registry: None,
+        stream: false,
+        event_sink: None,
+        compaction_settings: CompactionSettings {
+            max_context_chars: 0,
+            mode: CompactionMode::Off,
+            keep_last: 20,
+            tool_result_persist: ToolResultPersist::Digest,
+        },
+        hooks: HookManager::build(HookRuntimeConfig {
+            mode: HooksMode::Off,
+            config_path: std::env::temp_dir().join("unused_hooks.yaml"),
+            strict: false,
+            timeout_ms: 1000,
+            max_stdout_bytes: 200_000,
+        })
+        .expect("hooks"),
+        policy_loaded: None,
+        policy_for_taint: None,
+        taint_toggle: crate::taint::TaintToggle::Off,
+        taint_mode: crate::taint::TaintMode::Propagate,
+        taint_digest_bytes: 4096,
+        run_id_override: None,
+        omit_tools_field_when_empty: false,
+        plan_tool_enforcement: PlanToolEnforcementMode::Off,
+        mcp_pin_enforcement: McpPinEnforcementMode::Hard,
+        plan_step_constraints: Vec::new(),
+        tool_call_budget: ToolCallBudget::default(),
+        mcp_runtime_trace: Vec::new(),
+        operator_queue: PendingMessageQueue::default(),
+        operator_queue_limits: QueueLimits::default(),
+        operator_queue_rx: None,
+    };
+    let out = agent.run("Edit main.rs to return 2.", vec![], Vec::new()).await;
+    assert!(matches!(out.exit_reason, AgentExitReason::Ok), "{out:?}");
+    assert!(out.error.is_none(), "{out:?}");
+    let main = tokio::fs::read_to_string(tmp.path().join("main.rs"))
+        .await
+        .expect("read main");
+    assert!(main.contains("return 2;"), "{main}");
 }
 
 #[tokio::test]
