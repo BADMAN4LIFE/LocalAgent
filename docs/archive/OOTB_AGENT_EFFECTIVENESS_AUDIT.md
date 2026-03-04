@@ -1,12 +1,9 @@
 # Out-of-the-Box Agent Effectiveness Audit
 
-Status: Historical redirect
-
-This document has moved to:
-- [docs/archive/OOTB_AGENT_EFFECTIVENESS_AUDIT.md](archive/OOTB_AGENT_EFFECTIVENESS_AUDIT.md)
+Status: Historical snapshot (archived)
 
 For current behavior/contracts, use:
-- [docs/reference/RUNTIME_ARCHITECTURE.md](reference/RUNTIME_ARCHITECTURE.md)
+- [docs/reference/RUNTIME_ARCHITECTURE.md](../reference/RUNTIME_ARCHITECTURE.md)
 - [docs/archive/TOOL_CALL_ACCURACY_PR2_SPEC.md](TOOL_CALL_ACCURACY_PR2_SPEC.md)
 - [docs/archive/TOOL_CALL_ACCURACY_PR3_SPEC.md](TOOL_CALL_ACCURACY_PR3_SPEC.md)
 - [docs/archive/TOOL_CALL_ACCURACY_PR4_SPEC.md](TOOL_CALL_ACCURACY_PR4_SPEC.md)
