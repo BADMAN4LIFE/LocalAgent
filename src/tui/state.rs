@@ -267,6 +267,22 @@ impl UiState {
             self.mcp_stalled = false;
             self.mcp_stall_notice_emitted = false;
         }
+        let close_status = if exit_reason.as_deref() == Some("cancelled") {
+            "CANCEL:run_end"
+        } else {
+            "DONE:run_end"
+        };
+        for row in &mut self.tool_calls {
+            if row.status == "running" || row.status == "STALL" {
+                row.status = close_status.to_string();
+                row.reason_token = "run_end".to_string();
+                row.running_since = None;
+                row.running_for_ms = 0;
+                if row.short_result.trim().is_empty() {
+                    row.short_result = "closed on run_end without tool_exec_end".to_string();
+                }
+            }
+        }
         self.next_hint = "done".to_string();
     }
 
@@ -1436,6 +1452,29 @@ mod tests {
         assert_eq!(s.cancel_lifecycle, "COMPLETE");
         assert_eq!(s.tool_calls[0].status, "CANCEL:user");
         assert_eq!(s.tool_calls[0].reason_token, "user");
+    }
+
+    #[test]
+    fn non_mcp_running_tool_is_closed_on_run_end() {
+        let mut s = UiState::new(10);
+        s.apply_event(&Event::new(
+            "r1".to_string(),
+            1,
+            EventKind::ToolExecStart,
+            serde_json::json!({"tool_call_id":"tc1","name":"write_file","side_effects":"filesystem_write"}),
+        ));
+        assert_eq!(s.tool_calls[0].status, "running");
+        s.apply_event(&Event::new(
+            "r1".to_string(),
+            1,
+            EventKind::RunEnd,
+            serde_json::json!({"exit_reason":"ok"}),
+        ));
+        assert_eq!(s.tool_calls[0].status, "DONE:run_end");
+        assert_eq!(s.tool_calls[0].reason_token, "run_end");
+        assert!(s.tool_calls[0]
+            .short_result
+            .contains("closed on run_end without tool_exec_end"));
     }
 
     #[test]
