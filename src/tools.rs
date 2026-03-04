@@ -830,10 +830,7 @@ fn attach_warnings(meta: &mut ToolResultMeta, mut warnings: Vec<ToolWarningDetai
     }
 }
 
-fn collect_search_files(
-    rt: &ToolRuntime,
-    search_path: &str,
-) -> CollectSearchFilesResult {
+fn collect_search_files(rt: &ToolRuntime, search_path: &str) -> CollectSearchFilesResult {
     if !path_is_workdir_scoped(search_path) && !rt.unsafe_bypass_allow_flags {
         return Err(Box::new(failed_exec(
             rt,

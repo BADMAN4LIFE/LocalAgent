@@ -93,22 +93,25 @@ pub(crate) fn draw_chat_frame(
     let input_scroll = input_total_lines.saturating_sub(input_visible_lines);
     let input_section_height = (input_visible_lines as u16).saturating_add(2);
     let (streaming_visible, streaming_thinking) =
-        crate::agent_output_sanitize::split_user_visible_and_thinking_streaming(streaming_assistant);
+        crate::agent_output_sanitize::split_user_visible_and_thinking_streaming(
+            streaming_assistant,
+        );
     let has_streaming_thinking = streaming_thinking
         .as_deref()
         .map(|s| !s.trim().is_empty())
         .unwrap_or(false);
-    let latest_transcript_thinking = transcript
-        .iter()
-        .enumerate()
-        .rev()
-        .find_map(|(idx, (role, _))| {
-            if role == "assistant" {
-                transcript_thinking.get(&idx).cloned()
-            } else {
-                None
-            }
-        });
+    let latest_transcript_thinking =
+        transcript
+            .iter()
+            .enumerate()
+            .rev()
+            .find_map(|(idx, (role, _))| {
+                if role == "assistant" {
+                    transcript_thinking.get(&idx).cloned()
+                } else {
+                    None
+                }
+            });
     let panel_thinking = if has_streaming_thinking {
         streaming_thinking.clone()
     } else {
@@ -1221,4 +1224,3 @@ fn is_protocol_badge_row(t: &ToolRow) -> bool {
         || sr.contains("repeated invalid patch format")
         || sr.contains("tool-only phase")
 }
-

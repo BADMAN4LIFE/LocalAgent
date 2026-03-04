@@ -39,7 +39,11 @@ fn split_visible_and_thinking_from_parts(
     (trimmed.to_string(), thinking)
 }
 
-fn strip_tag_block_with_capture(input: &str, tag: &str, capture_unclosed: bool) -> (String, Vec<String>) {
+fn strip_tag_block_with_capture(
+    input: &str,
+    tag: &str,
+    capture_unclosed: bool,
+) -> (String, Vec<String>) {
     let mut out = String::with_capacity(input.len());
     let mut captured = Vec::new();
     let open = format!("<{tag}>");
