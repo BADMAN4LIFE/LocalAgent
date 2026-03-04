@@ -852,53 +852,6 @@ impl ModelProvider for DualToolProvider {
     }
 }
 
-struct DualThenDoneProvider {
-    calls: Arc<AtomicUsize>,
-}
-
-#[async_trait]
-impl ModelProvider for DualThenDoneProvider {
-    async fn generate(&self, _req: GenerateRequest) -> anyhow::Result<GenerateResponse> {
-        let n = self.calls.fetch_add(1, Ordering::SeqCst);
-        if n == 0 {
-            Ok(GenerateResponse {
-                assistant: Message {
-                    role: Role::Assistant,
-                    content: Some(String::new()),
-                    tool_call_id: None,
-                    tool_name: None,
-                    tool_calls: None,
-                },
-                tool_calls: vec![
-                    crate::types::ToolCall {
-                        id: "tc1".to_string(),
-                        name: "read_file".to_string(),
-                        arguments: serde_json::json!({"path":"a.txt"}),
-                    },
-                    crate::types::ToolCall {
-                        id: "tc2".to_string(),
-                        name: "read_file".to_string(),
-                        arguments: serde_json::json!({"path":"a.txt"}),
-                    },
-                ],
-                usage: None,
-            })
-        } else {
-            Ok(GenerateResponse {
-                assistant: Message {
-                    role: Role::Assistant,
-                    content: Some("done".to_string()),
-                    tool_call_id: None,
-                    tool_name: None,
-                    tool_calls: None,
-                },
-                tool_calls: Vec::new(),
-                usage: None,
-            })
-        }
-    }
-}
-
 struct CountingNoToolProvider {
     calls: Arc<AtomicUsize>,
 }
@@ -916,6 +869,29 @@ impl ModelProvider for CountingNoToolProvider {
                 tool_calls: None,
             },
             tool_calls: Vec::new(),
+            usage: None,
+        })
+    }
+}
+
+struct AlwaysToolProvider;
+
+#[async_trait]
+impl ModelProvider for AlwaysToolProvider {
+    async fn generate(&self, _req: GenerateRequest) -> anyhow::Result<GenerateResponse> {
+        Ok(GenerateResponse {
+            assistant: Message {
+                role: Role::Assistant,
+                content: Some(String::new()),
+                tool_call_id: None,
+                tool_name: None,
+                tool_calls: None,
+            },
+            tool_calls: vec![crate::types::ToolCall {
+                id: "tc_repeat".to_string(),
+                name: "read_file".to_string(),
+                arguments: serde_json::json!({"path":"a.txt"}),
+            }],
             usage: None,
         })
     }
@@ -1443,9 +1419,7 @@ async fn operator_interrupt_delivers_post_tool_and_cancels_remaining_turn_work()
         .expect("write");
     let events = Arc::new(Mutex::new(Vec::<crate::events::Event>::new()));
     let calls = Arc::new(AtomicUsize::new(0));
-    let provider = DualThenDoneProvider {
-        calls: calls.clone(),
-    };
+    let provider = ToolCallProvider { calls: calls.clone() };
     let mut agent = Agent {
         provider,
         model: "m".to_string(),
@@ -1536,8 +1510,7 @@ async fn operator_interrupt_delivers_post_tool_and_cancels_remaining_turn_work()
     let out = agent.run("hi", vec![], Vec::new()).await;
     assert!(matches!(out.exit_reason, AgentExitReason::Ok));
     assert_eq!(out.final_output, "done");
-    // second tool in first response should be skipped due to interrupt-after-post_tool
-    assert_eq!(out.tool_calls.iter().filter(|t| t.id == "tc2").count(), 0);
+    assert_eq!(out.tool_calls.iter().filter(|t| t.id == "tc1").count(), 1);
     let evs = events.lock().expect("lock");
     let kinds = evs
         .iter()
@@ -1874,7 +1847,7 @@ async fn tool_budget_exceeded_returns_deterministic_exit() {
         .await
         .expect("write");
     let mut agent = Agent {
-        provider: DualToolProvider,
+        provider: AlwaysToolProvider,
         model: "m".to_string(),
         temperature: None,
         top_p: None,
@@ -1886,7 +1859,7 @@ async fn tool_budget_exceeded_returns_deterministic_exit() {
             parameters: serde_json::json!({"type":"object"}),
             side_effects: crate::types::SideEffects::FilesystemRead,
         }],
-        max_steps: 1,
+        max_steps: 2,
         tool_rt: ToolRuntime {
             workdir: tmp.path().to_path_buf(),
             allow_shell: false,
@@ -1966,6 +1939,105 @@ async fn tool_budget_exceeded_returns_deterministic_exit() {
         .tool_decisions
         .iter()
         .any(|d| d.source.as_deref() == Some("runtime_budget")));
+}
+
+#[tokio::test]
+async fn multiple_tool_calls_in_single_step_fail_with_protocol_violation() {
+    let tmp = tempfile::tempdir().expect("tmp");
+    tokio::fs::write(tmp.path().join("a.txt"), "x")
+        .await
+        .expect("write");
+    let mut agent = Agent {
+        provider: DualToolProvider,
+        model: "m".to_string(),
+        temperature: None,
+        top_p: None,
+        max_tokens: None,
+        seed: None,
+        tools: vec![crate::types::ToolDef {
+            name: "read_file".to_string(),
+            description: "d".to_string(),
+            parameters: serde_json::json!({"type":"object"}),
+            side_effects: crate::types::SideEffects::FilesystemRead,
+        }],
+        max_steps: 1,
+        tool_rt: ToolRuntime {
+            workdir: tmp.path().to_path_buf(),
+            allow_shell: false,
+            allow_shell_in_workdir_only: false,
+            allow_write: false,
+            max_tool_output_bytes: 200_000,
+            max_read_bytes: 200_000,
+            unsafe_bypass_allow_flags: false,
+            tool_args_strict: ToolArgsStrict::On,
+            exec_target_kind: ExecTargetKind::Host,
+            exec_target: std::sync::Arc::new(HostTarget),
+        },
+        gate: Box::new(NoGate::new()),
+        gate_ctx: GateContext {
+            workdir: tmp.path().to_path_buf(),
+            allow_shell: false,
+            allow_write: false,
+            approval_mode: ApprovalMode::Interrupt,
+            auto_approve_scope: AutoApproveScope::Run,
+            unsafe_mode: false,
+            unsafe_bypass_allow_flags: false,
+            run_id: None,
+            enable_write_tools: false,
+            max_tool_output_bytes: 200_000,
+            max_read_bytes: 200_000,
+            provider: ProviderKind::Ollama,
+            model: "m".to_string(),
+            exec_target: ExecTargetKind::Host,
+            approval_key_version: crate::gate::ApprovalKeyVersion::V1,
+            tool_schema_hashes: std::collections::BTreeMap::new(),
+            hooks_config_hash_hex: None,
+            planner_hash_hex: None,
+            taint_enabled: false,
+            taint_mode: crate::taint::TaintMode::Propagate,
+            taint_overall: crate::taint::TaintLevel::Clean,
+            taint_sources: Vec::new(),
+        },
+        mcp_registry: None,
+        stream: false,
+        event_sink: None,
+        compaction_settings: CompactionSettings {
+            max_context_chars: 0,
+            mode: CompactionMode::Off,
+            keep_last: 20,
+            tool_result_persist: ToolResultPersist::Digest,
+        },
+        hooks: HookManager::build(HookRuntimeConfig {
+            mode: HooksMode::Off,
+            config_path: std::env::temp_dir().join("unused_hooks.yaml"),
+            strict: false,
+            timeout_ms: 1000,
+            max_stdout_bytes: 200_000,
+        })
+        .expect("hooks"),
+        policy_loaded: None,
+        policy_for_taint: None,
+        taint_toggle: crate::taint::TaintToggle::Off,
+        taint_mode: crate::taint::TaintMode::Propagate,
+        taint_digest_bytes: 4096,
+        run_id_override: None,
+        omit_tools_field_when_empty: false,
+        plan_tool_enforcement: PlanToolEnforcementMode::Off,
+        mcp_pin_enforcement: McpPinEnforcementMode::Hard,
+        plan_step_constraints: Vec::new(),
+        tool_call_budget: ToolCallBudget::default(),
+        mcp_runtime_trace: Vec::new(),
+        operator_queue: PendingMessageQueue::default(),
+        operator_queue_limits: QueueLimits::default(),
+        operator_queue_rx: None,
+    };
+    let out = agent.run("hi", vec![], Vec::new()).await;
+    assert!(matches!(out.exit_reason, AgentExitReason::PlannerError));
+    assert!(out
+        .error
+        .as_deref()
+        .unwrap_or_default()
+        .contains("multiple tool calls in a single assistant step"));
 }
 
 #[tokio::test]

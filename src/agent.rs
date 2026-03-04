@@ -1225,6 +1225,57 @@ Fallback when native tool calls are unavailable:\n\
                 EventKind::ModelResponseEnd,
                 serde_json::json!({"tool_calls": resp.tool_calls.len()}),
             );
+            if resp.tool_calls.len() > 1 {
+                let reason = format!(
+                    "MODEL_TOOL_PROTOCOL_VIOLATION: multiple tool calls in a single assistant step (max 1, got {})",
+                    resp.tool_calls.len()
+                );
+                self.emit_event(
+                    &run_id,
+                    step as u32,
+                    EventKind::Error,
+                    serde_json::json!({
+                        "error": reason,
+                        "source": "tool_protocol_guard",
+                        "failure_class": "E_PROTOCOL_MULTI_TOOL",
+                        "tool_calls": resp.tool_calls.len()
+                    }),
+                );
+                self.emit_event(
+                    &run_id,
+                    step as u32,
+                    EventKind::RunEnd,
+                    serde_json::json!({"exit_reason":"planner_error"}),
+                );
+                return AgentOutcome {
+                    run_id,
+                    started_at,
+                    finished_at: crate::trust::now_rfc3339(),
+                    exit_reason: AgentExitReason::PlannerError,
+                    final_output: reason.clone(),
+                    error: Some(reason),
+                    messages,
+                    tool_calls: observed_tool_calls,
+                    tool_decisions: observed_tool_decisions,
+                    compaction_settings: self.compaction_settings.clone(),
+                    final_prompt_size_chars: request_context_chars,
+                    compaction_report: last_compaction_report,
+                    hook_invocations,
+                    provider_retry_count,
+                    provider_error_count,
+                    token_usage: if saw_token_usage {
+                        Some(total_token_usage.clone())
+                    } else {
+                        None
+                    },
+                    taint: taint_record_from_state(
+                        self.taint_toggle,
+                        self.taint_mode,
+                        self.taint_digest_bytes,
+                        &taint_state,
+                    ),
+                };
+            }
             if tool_only_phase_active
                 && resp.tool_calls.is_empty()
                 && !resp
