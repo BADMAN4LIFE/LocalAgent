@@ -56,6 +56,13 @@ pub enum AgentExitReason {
     Cancelled,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum StepCompletionDecision {
+    ExecuteTools,
+    ContinuePendingPlan,
+    Finalize,
+}
+
 pub fn sanitize_user_visible_output(raw: &str) -> String {
     sanitize_user_visible_output_impl(raw)
 }
@@ -95,6 +102,24 @@ fn injected_messages_allow_skip_post_write_verification(messages: &[Message]) ->
                 .as_deref()
                 .is_some_and(|c| c.trim() == INTERNAL_SKIP_POST_WRITE_VERIFICATION_FLAG)
     })
+}
+
+fn decide_step_completion(
+    has_tool_calls: bool,
+    plan_tool_enforcement: PlanToolEnforcementMode,
+    active_plan_step_idx: usize,
+    plan_step_constraints_len: usize,
+) -> StepCompletionDecision {
+    if has_tool_calls {
+        return StepCompletionDecision::ExecuteTools;
+    }
+    if !matches!(plan_tool_enforcement, PlanToolEnforcementMode::Off)
+        && plan_step_constraints_len > 0
+        && active_plan_step_idx < plan_step_constraints_len
+    {
+        return StepCompletionDecision::ContinuePendingPlan;
+    }
+    StepCompletionDecision::Finalize
 }
 
 impl AgentExitReason {
@@ -1776,10 +1801,13 @@ Fallback when native tool calls are unavailable:\n\
                 taint_state.mark_assistant_context_tainted(idx);
             }
 
-            if resp.tool_calls.is_empty() {
-                if !matches!(self.plan_tool_enforcement, PlanToolEnforcementMode::Off)
-                    && active_plan_step_idx < self.plan_step_constraints.len()
-                {
+            match decide_step_completion(
+                !resp.tool_calls.is_empty(),
+                self.plan_tool_enforcement,
+                active_plan_step_idx,
+                self.plan_step_constraints.len(),
+            ) {
+                StepCompletionDecision::ContinuePendingPlan => {
                     let step_constraint = self.plan_step_constraints[active_plan_step_idx].clone();
                     blocked_halt_count = blocked_halt_count.saturating_add(1);
                     let reason = format!(
@@ -1864,121 +1892,158 @@ Fallback when native tool calls are unavailable:\n\
                     });
                     continue;
                 }
-                let (queue_delivered, queue_interrupted) = self.deliver_operator_queue_at_boundary(
-                    &run_id,
-                    step as u32,
-                    DeliveryBoundary::TurnIdle,
-                    &mut messages,
-                );
-                if queue_interrupted || queue_delivered {
-                    continue 'agent_steps;
-                }
-                let final_output =
-                    if !matches!(self.plan_tool_enforcement, PlanToolEnforcementMode::Off)
-                        && !self.plan_step_constraints.is_empty()
-                    {
-                        last_user_output.unwrap_or_default()
-                    } else {
-                        assistant.content.unwrap_or_default()
-                    };
-                if !allow_skip_post_write_verification {
-                    let pending_post_write_paths =
-                        pending_post_write_verification_paths(&observed_tool_executions);
-                    for path in pending_post_write_paths {
-                        let verify = self
-                            .tool_rt
-                            .exec_target
-                            .read_file(crate::target::ReadReq {
-                                workdir: self.tool_rt.workdir.clone(),
-                                path: path.clone(),
-                                max_read_bytes: self.tool_rt.max_read_bytes,
-                            })
-                            .await;
-                        observed_tool_executions.push(ToolExecutionRecord {
-                            name: "read_file".to_string(),
-                            path: Some(path.clone()),
-                            ok: verify.ok,
-                        });
-                        if !verify.ok {
-                            let reason = format!(
-                                "implementation guard: runtime post-write verification failed read_file on '{path}': {}",
-                                verify.content
-                            );
-                            self.emit_event(
-                                &run_id,
-                                step as u32,
-                                EventKind::Error,
-                                serde_json::json!({
-                                    "error": reason,
-                                    "source": "implementation_integrity_guard"
-                                }),
-                            );
-                            self.emit_event(
-                                &run_id,
-                                step as u32,
-                                EventKind::RunEnd,
-                                serde_json::json!({"exit_reason":"planner_error"}),
-                            );
-                            return AgentOutcome {
-                                run_id,
-                                started_at,
-                                finished_at: crate::trust::now_rfc3339(),
-                                exit_reason: AgentExitReason::PlannerError,
-                                final_output: String::new(),
-                                error: Some(reason),
-                                messages,
-                                tool_calls: observed_tool_calls,
-                                tool_decisions: observed_tool_decisions,
-                                compaction_settings: self.compaction_settings.clone(),
-                                final_prompt_size_chars: request_context_chars,
-                                compaction_report: last_compaction_report,
-                                hook_invocations,
-                                provider_retry_count,
-                                provider_error_count,
-                                token_usage: if saw_token_usage {
-                                    Some(total_token_usage.clone())
-                                } else {
-                                    None
-                                },
-                                taint: taint_record_from_state(
-                                    self.taint_toggle,
-                                    self.taint_mode,
-                                    self.taint_digest_bytes,
-                                    &taint_state,
-                                ),
-                            };
+                StepCompletionDecision::Finalize => {
+                    let (queue_delivered, queue_interrupted) =
+                        self.deliver_operator_queue_at_boundary(
+                            &run_id,
+                            step as u32,
+                            DeliveryBoundary::TurnIdle,
+                            &mut messages,
+                        );
+                    if queue_interrupted || queue_delivered {
+                        continue 'agent_steps;
+                    }
+                    let final_output =
+                        if !matches!(self.plan_tool_enforcement, PlanToolEnforcementMode::Off)
+                            && !self.plan_step_constraints.is_empty()
+                        {
+                            last_user_output.unwrap_or_default()
+                        } else {
+                            assistant.content.unwrap_or_default()
+                        };
+                    if !allow_skip_post_write_verification {
+                        let pending_post_write_paths =
+                            pending_post_write_verification_paths(&observed_tool_executions);
+                        for path in pending_post_write_paths {
+                            let verify = self
+                                .tool_rt
+                                .exec_target
+                                .read_file(crate::target::ReadReq {
+                                    workdir: self.tool_rt.workdir.clone(),
+                                    path: path.clone(),
+                                    max_read_bytes: self.tool_rt.max_read_bytes,
+                                })
+                                .await;
+                            observed_tool_executions.push(ToolExecutionRecord {
+                                name: "read_file".to_string(),
+                                path: Some(path.clone()),
+                                ok: verify.ok,
+                            });
+                            if !verify.ok {
+                                let reason = format!(
+                                    "implementation guard: runtime post-write verification failed read_file on '{path}': {}",
+                                    verify.content
+                                );
+                                self.emit_event(
+                                    &run_id,
+                                    step as u32,
+                                    EventKind::Error,
+                                    serde_json::json!({
+                                        "error": reason,
+                                        "source": "implementation_integrity_guard"
+                                    }),
+                                );
+                                self.emit_event(
+                                    &run_id,
+                                    step as u32,
+                                    EventKind::RunEnd,
+                                    serde_json::json!({"exit_reason":"planner_error"}),
+                                );
+                                return AgentOutcome {
+                                    run_id,
+                                    started_at,
+                                    finished_at: crate::trust::now_rfc3339(),
+                                    exit_reason: AgentExitReason::PlannerError,
+                                    final_output: String::new(),
+                                    error: Some(reason),
+                                    messages,
+                                    tool_calls: observed_tool_calls,
+                                    tool_decisions: observed_tool_decisions,
+                                    compaction_settings: self.compaction_settings.clone(),
+                                    final_prompt_size_chars: request_context_chars,
+                                    compaction_report: last_compaction_report,
+                                    hook_invocations,
+                                    provider_retry_count,
+                                    provider_error_count,
+                                    token_usage: if saw_token_usage {
+                                        Some(total_token_usage.clone())
+                                    } else {
+                                        None
+                                    },
+                                    taint: taint_record_from_state(
+                                        self.taint_toggle,
+                                        self.taint_mode,
+                                        self.taint_digest_bytes,
+                                        &taint_state,
+                                    ),
+                                };
+                            }
                         }
                     }
-                }
-                if let Some(reason) = implementation_integrity_violation_with_tool_executions(
-                    user_prompt,
-                    &final_output,
-                    &observed_tool_calls,
-                    &observed_tool_executions,
-                    allow_skip_post_write_verification,
-                ) {
-                    self.emit_event(
-                        &run_id,
-                        step as u32,
-                        EventKind::Error,
-                        serde_json::json!({
-                            "error": reason,
-                            "source": "implementation_integrity_guard"
-                        }),
-                    );
+                    if let Some(reason) = implementation_integrity_violation_with_tool_executions(
+                        user_prompt,
+                        &final_output,
+                        &observed_tool_calls,
+                        &observed_tool_executions,
+                        allow_skip_post_write_verification,
+                    ) {
+                        self.emit_event(
+                            &run_id,
+                            step as u32,
+                            EventKind::Error,
+                            serde_json::json!({
+                                "error": reason,
+                                "source": "implementation_integrity_guard"
+                            }),
+                        );
+                        self.emit_event(
+                            &run_id,
+                            step as u32,
+                            EventKind::RunEnd,
+                            serde_json::json!({"exit_reason":"planner_error"}),
+                        );
+                        return AgentOutcome {
+                            run_id,
+                            started_at,
+                            finished_at: crate::trust::now_rfc3339(),
+                            exit_reason: AgentExitReason::PlannerError,
+                            final_output: String::new(),
+                            error: Some(reason),
+                            messages,
+                            tool_calls: observed_tool_calls,
+                            tool_decisions: observed_tool_decisions,
+                            compaction_settings: self.compaction_settings.clone(),
+                            final_prompt_size_chars: request_context_chars,
+                            compaction_report: last_compaction_report,
+                            hook_invocations,
+                            provider_retry_count,
+                            provider_error_count,
+                            token_usage: if saw_token_usage {
+                                Some(total_token_usage.clone())
+                            } else {
+                                None
+                            },
+                            taint: taint_record_from_state(
+                                self.taint_toggle,
+                                self.taint_mode,
+                                self.taint_digest_bytes,
+                                &taint_state,
+                            ),
+                        };
+                    }
                     self.emit_event(
                         &run_id,
                         step as u32,
                         EventKind::RunEnd,
-                        serde_json::json!({"exit_reason":"planner_error"}),
+                        serde_json::json!({"exit_reason":"ok"}),
                     );
                     return AgentOutcome {
                         run_id,
                         started_at,
                         finished_at: crate::trust::now_rfc3339(),
-                        exit_reason: AgentExitReason::PlannerError,
-                        final_output: String::new(),
-                        error: Some(reason),
+                        exit_reason: AgentExitReason::Ok,
+                        final_output,
+                        error: None,
                         messages,
                         tool_calls: observed_tool_calls,
                         tool_decisions: observed_tool_decisions,
@@ -2001,40 +2066,7 @@ Fallback when native tool calls are unavailable:\n\
                         ),
                     };
                 }
-                self.emit_event(
-                    &run_id,
-                    step as u32,
-                    EventKind::RunEnd,
-                    serde_json::json!({"exit_reason":"ok"}),
-                );
-                return AgentOutcome {
-                    run_id,
-                    started_at,
-                    finished_at: crate::trust::now_rfc3339(),
-                    exit_reason: AgentExitReason::Ok,
-                    final_output,
-                    error: None,
-                    messages,
-                    tool_calls: observed_tool_calls,
-                    tool_decisions: observed_tool_decisions,
-                    compaction_settings: self.compaction_settings.clone(),
-                    final_prompt_size_chars: request_context_chars,
-                    compaction_report: last_compaction_report,
-                    hook_invocations,
-                    provider_retry_count,
-                    provider_error_count,
-                    token_usage: if saw_token_usage {
-                        Some(total_token_usage.clone())
-                    } else {
-                        None
-                    },
-                    taint: taint_record_from_state(
-                        self.taint_toggle,
-                        self.taint_mode,
-                        self.taint_digest_bytes,
-                        &taint_state,
-                    ),
-                };
+                StepCompletionDecision::ExecuteTools => {}
             }
 
             for tc in &resp.tool_calls {

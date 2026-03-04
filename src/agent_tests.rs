@@ -56,6 +56,24 @@ fn split_streaming_shows_only_post_think_visible_text() {
     assert_eq!(thinking.as_deref(), Some("internal plan"));
 }
 
+#[test]
+fn step_completion_decision_executes_tools_when_tool_calls_present() {
+    let d = super::decide_step_completion(true, PlanToolEnforcementMode::Off, 0, 0);
+    assert!(matches!(d, super::StepCompletionDecision::ExecuteTools));
+}
+
+#[test]
+fn step_completion_decision_blocks_when_plan_step_pending() {
+    let d = super::decide_step_completion(false, PlanToolEnforcementMode::Hard, 0, 1);
+    assert!(matches!(d, super::StepCompletionDecision::ContinuePendingPlan));
+}
+
+#[test]
+fn step_completion_decision_finalizes_when_no_tools_and_no_pending_plan() {
+    let d = super::decide_step_completion(false, PlanToolEnforcementMode::Off, 0, 0);
+    assert!(matches!(d, super::StepCompletionDecision::Finalize));
+}
+
 #[async_trait]
 impl ModelProvider for MockProvider {
     async fn generate(&self, _req: GenerateRequest) -> anyhow::Result<GenerateResponse> {
