@@ -22,6 +22,7 @@
   "schema_keys": {
     "cli": [
       "activated_packs",
+      "agent_mode",
       "allow_shell",
       "allow_write",
       "approval_key",
@@ -64,6 +65,7 @@
       "mode",
       "model",
       "no_limits",
+      "output_mode",
       "policy_version",
       "project_guidance_bytes_kept",
       "project_guidance_bytes_loaded",
