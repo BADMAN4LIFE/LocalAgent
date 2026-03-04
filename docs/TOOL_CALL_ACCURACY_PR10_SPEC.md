@@ -29,7 +29,7 @@ Improve approval UX in chat TUI by making pending approvals visible immediately 
   - Expose deterministic pending-count helper and stable approval row ordering contract
 - `docs/reference/CLI_REFERENCE.md`
   - Document TUI approvals controls (`Ctrl+J/K`, `Ctrl+A`, `Ctrl+X`, `Ctrl+R`)
-- `manual-testing/tui-coding-provider/README.md`
+- `manual-tui-testing/README.md`
   - Update operator guidance for approval behavior
 
 ## Behavioral contract

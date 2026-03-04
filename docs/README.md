@@ -65,6 +65,21 @@ Non-normative docs (contributor context/history only):
 - [PR6 Scope](archive/PR6_SCOPE_TUI_LEARN_COMMANDS.md)
 - [PR7 Scope Archive Summary](archive/PR7_SCOPE_ARCHIVE_SUMMARY.md)
 
+## Tool Call Accuracy PR Specs
+
+- [PR2 Spec](TOOL_CALL_ACCURACY_PR2_SPEC.md)
+- [PR3 Spec](TOOL_CALL_ACCURACY_PR3_SPEC.md)
+- [PR4 Spec](TOOL_CALL_ACCURACY_PR4_SPEC.md)
+- [PR5 Spec](TOOL_CALL_ACCURACY_PR5_SPEC.md)
+- [PR6 Spec](TOOL_CALL_ACCURACY_PR6_SPEC.md)
+- [PR7 Spec](TOOL_CALL_ACCURACY_PR7_SPEC.md)
+- [PR8 Spec](TOOL_CALL_ACCURACY_PR8_SPEC.md)
+- [PR9 Spec](TOOL_CALL_ACCURACY_PR9_SPEC.md)
+- [PR10 Spec](TOOL_CALL_ACCURACY_PR10_SPEC.md)
+- [PR11 Spec](TOOL_CALL_ACCURACY_PR11_SPEC.md)
+- [PR12 Spec](TOOL_CALL_ACCURACY_PR12_SPEC.md)
+- PR1 note: pre-PR2 baseline is captured in historical umbrella docs under `docs/archive/`.
+
 ## Manual Testing
 
 - [Manual TUI Coding Test Pack](../manual-tui-testing/README.md)
