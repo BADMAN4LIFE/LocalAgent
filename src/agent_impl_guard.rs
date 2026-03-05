@@ -102,6 +102,12 @@ pub(crate) fn implementation_integrity_violation_with_tool_executions(
             _ => {}
         }
     }
+    // If runtime post-write verification completed successfully for all write attempts,
+    // treat the write as effective even when apply_patch reports changed:false.
+    // This avoids false negatives on idempotent edits or backend-specific changed flags.
+    if saw_write_attempt && !saw_effective_write && pending_post_write_verification.is_empty() {
+        saw_effective_write = true;
+    }
     if (saw_write_attempt || prompt_requires_effective_write(user_prompt)) && !saw_effective_write {
         return Some(
             "implementation guard: file-edit task finalized without an effective write (writes failed or apply_patch changed:false)".to_string(),

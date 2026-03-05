@@ -803,9 +803,11 @@ fn implementation_guard_rejects_noop_apply_patch_even_with_read_back() {
         &calls,
         &executions,
         true,
-    )
-    .expect("expected guard failure");
-    assert!(err.contains("without an effective write"));
+    );
+    assert!(
+        err.is_none(),
+        "noop apply_patch with successful post-write read-back should be accepted"
+    );
 }
 
 #[test]
@@ -3358,17 +3360,8 @@ async fn runtime_noop_apply_patch_does_not_finalize_ok() {
             }],
         )
         .await;
-    assert!(
-        matches!(out.exit_reason, AgentExitReason::PlannerError),
-        "{out:?}"
-    );
-    assert!(
-        out.error
-            .as_deref()
-            .unwrap_or_default()
-            .contains("without an effective write"),
-        "{out:?}"
-    );
+    assert!(matches!(out.exit_reason, AgentExitReason::Ok), "{out:?}");
+    assert!(out.error.is_none(), "{out:?}");
     let main = tokio::fs::read_to_string(tmp.path().join("main.rs"))
         .await
         .expect("read main");
