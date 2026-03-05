@@ -1003,6 +1003,8 @@ impl UiState {
         side_effects: String,
         status: &str,
     ) -> &mut ToolRow {
+        let is_inflight_status = |s: &str| matches!(s, "detected" | "decided" | "running");
+
         // Some providers reuse or omit tool_call_id. Match the most recent
         // compatible row instead of the first id match to avoid cross-tool
         // collapse when ids are recycled.
@@ -1020,9 +1022,7 @@ impl UiState {
                 }
                 // For nameless updates, prefer in-flight rows and avoid mutating
                 // already-completed rows from earlier tools that reused the id.
-                if tool_name.is_empty()
-                    && !matches!(t.status.as_str(), "detected" | "decided" | "running")
-                {
+                if tool_name.is_empty() && !is_inflight_status(t.status.as_str()) {
                     return None;
                 }
                 if !side_effects.is_empty()
@@ -1048,6 +1048,48 @@ impl UiState {
             }
             return row;
         }
+
+        // Fallback for providers that omit or mutate tool_call_id between
+        // lifecycle events: reconcile against the latest compatible in-flight row.
+        if let Some(idx) = self
+            .tool_calls
+            .iter()
+            .enumerate()
+            .rev()
+            .find_map(|(idx, t)| {
+                if !is_inflight_status(t.status.as_str()) {
+                    return None;
+                }
+                if !tool_name.is_empty() && !t.tool_name.is_empty() && t.tool_name != tool_name {
+                    return None;
+                }
+                if !side_effects.is_empty()
+                    && !t.side_effects.is_empty()
+                    && t.side_effects != side_effects
+                {
+                    return None;
+                }
+                Some(idx)
+            })
+        {
+            let row = &mut self.tool_calls[idx];
+            row.status = status.to_string();
+            if status == "running" && row.running_since.is_none() {
+                row.running_since = Some(Instant::now());
+                row.running_for_ms = 0;
+            }
+            if row.tool_call_id.is_empty() && !tool_call_id.is_empty() {
+                row.tool_call_id = tool_call_id;
+            }
+            if !tool_name.is_empty() {
+                row.tool_name = tool_name;
+            }
+            if !side_effects.is_empty() {
+                row.side_effects = side_effects;
+            }
+            return row;
+        }
+
         self.tool_calls.push(ToolRow {
             tool_call_id,
             tool_name,
@@ -1502,6 +1544,50 @@ mod tests {
         assert_eq!(s.tool_calls[1].tool_name, "apply_patch");
         assert_eq!(s.tool_calls[0].status, "OK:tool");
         assert_eq!(s.tool_calls[1].status, "OK:tool");
+    }
+
+    #[test]
+    fn exec_end_without_id_or_name_updates_latest_inflight_patch_row() {
+        let mut s = UiState::new(10);
+        s.apply_event(&Event::new(
+            "r1".to_string(),
+            1,
+            EventKind::ToolExecStart,
+            serde_json::json!({"tool_call_id":"tc_patch","name":"apply_patch","side_effects":"filesystem_write"}),
+        ));
+        s.apply_event(&Event::new(
+            "r1".to_string(),
+            1,
+            EventKind::ToolExecEnd,
+            serde_json::json!({"ok":true,"content":"ok"}),
+        ));
+
+        assert_eq!(s.tool_calls.len(), 1);
+        assert_eq!(s.tool_calls[0].tool_name, "apply_patch");
+        assert_eq!(s.tool_calls[0].status, "OK:tool");
+        assert_eq!(s.tool_calls[0].ok, Some(true));
+    }
+
+    #[test]
+    fn exec_end_with_mismatched_id_updates_inflight_patch_row() {
+        let mut s = UiState::new(10);
+        s.apply_event(&Event::new(
+            "r1".to_string(),
+            1,
+            EventKind::ToolExecStart,
+            serde_json::json!({"tool_call_id":"tc_patch_start","name":"apply_patch","side_effects":"filesystem_write"}),
+        ));
+        s.apply_event(&Event::new(
+            "r1".to_string(),
+            1,
+            EventKind::ToolExecEnd,
+            serde_json::json!({"tool_call_id":"tc_patch_end","name":"apply_patch","ok":true,"content":"ok"}),
+        ));
+
+        assert_eq!(s.tool_calls.len(), 1);
+        assert_eq!(s.tool_calls[0].tool_name, "apply_patch");
+        assert_eq!(s.tool_calls[0].status, "OK:tool");
+        assert_eq!(s.tool_calls[0].ok, Some(true));
     }
 
     #[test]
