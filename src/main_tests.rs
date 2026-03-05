@@ -166,7 +166,7 @@ fn run_command_defaults_to_no_session_and_derived_state_dir() {
     ];
     let tmp = tempdir().expect("tempdir");
     let workdir = std::fs::canonicalize(tmp.path()).expect("canonicalize");
-    crate::cli_dispatch::apply_run_command_defaults(&mut cli, &argv, &workdir);
+    let _ = crate::cli_dispatch::apply_run_command_defaults(&mut cli, &argv, &workdir);
     assert!(cli.run.no_session);
     let state_dir = cli.run.state_dir.expect("state dir");
     assert!(!state_dir.starts_with(&workdir));
@@ -196,8 +196,8 @@ fn run_command_respects_explicit_state_dir_override() {
     ];
     let tmp = tempdir().expect("tempdir");
     let workdir = std::fs::canonicalize(tmp.path()).expect("canonicalize");
-    crate::cli_dispatch::apply_run_command_defaults(&mut cli, &argv, &workdir);
-    assert!(cli.run.no_session);
+    let _ = crate::cli_dispatch::apply_run_command_defaults(&mut cli, &argv, &workdir);
+    assert!(!cli.run.no_session);
     assert_eq!(
         cli.run
             .state_dir
@@ -228,7 +228,7 @@ fn non_run_command_does_not_force_no_session_or_state_dir() {
     ];
     let tmp = tempdir().expect("tempdir");
     let workdir = std::fs::canonicalize(tmp.path()).expect("canonicalize");
-    crate::cli_dispatch::apply_run_command_defaults(&mut cli, &argv, &workdir);
+    let _ = crate::cli_dispatch::apply_run_command_defaults(&mut cli, &argv, &workdir);
     assert!(!cli.run.no_session);
     assert!(cli.run.state_dir.is_none());
 }

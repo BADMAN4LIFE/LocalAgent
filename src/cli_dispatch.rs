@@ -21,26 +21,49 @@ fn argv_has_flag(argv: &[std::ffi::OsString], flag: &str) -> bool {
     })
 }
 
-fn default_state_dir_for_workdir(workdir: &std::path::Path) -> std::path::PathBuf {
-    let parent = workdir.parent().unwrap_or(workdir);
-    let key = crate::store::sha256_hex(crate::store::stable_path_string(workdir).as_bytes());
-    parent.join(".localagent").join(&key[..12])
+fn fresh_ephemeral_state_dir() -> std::path::PathBuf {
+    std::env::temp_dir()
+        .join("localagent")
+        .join("run-state")
+        .join(uuid::Uuid::new_v4().to_string())
+}
+
+struct EphemeralStateDirGuard {
+    path: std::path::PathBuf,
+}
+
+impl EphemeralStateDirGuard {
+    fn new(path: std::path::PathBuf) -> Self {
+        Self { path }
+    }
+}
+
+impl Drop for EphemeralStateDirGuard {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.path);
+    }
 }
 
 pub(crate) fn apply_run_command_defaults(
     cli: &mut Cli,
     argv: &[std::ffi::OsString],
     workdir: &std::path::Path,
-) {
+) -> Option<std::path::PathBuf> {
+    let _ = workdir;
     if !matches!(cli.command, Some(Commands::Run) | Some(Commands::Exec)) {
-        return;
+        return None;
     }
-    if !argv_has_flag(argv, "--no-session") {
+    let no_session_explicit = argv_has_flag(argv, "--no-session");
+    let state_dir_explicit = argv_has_flag(argv, "--state-dir");
+    if !no_session_explicit && !state_dir_explicit {
         cli.run.no_session = true;
     }
-    if cli.run.state_dir.is_none() {
-        cli.run.state_dir = Some(default_state_dir_for_workdir(workdir));
+    if cli.run.state_dir.is_none() && !state_dir_explicit {
+        let path = fresh_ephemeral_state_dir();
+        cli.run.state_dir = Some(path.clone());
+        return Some(path);
     }
+    None
 }
 
 pub(crate) async fn run_cli() -> anyhow::Result<()> {
@@ -66,7 +89,8 @@ pub(crate) async fn run_cli() -> anyhow::Result<()> {
 
     let workdir = std::fs::canonicalize(&cli.run.workdir)
         .with_context(|| format!("failed to resolve workdir: {}", cli.run.workdir.display()))?;
-    apply_run_command_defaults(&mut cli, &argv, &workdir);
+    let ephemeral_state_dir = apply_run_command_defaults(&mut cli, &argv, &workdir);
+    let _ephemeral_state_guard = ephemeral_state_dir.map(EphemeralStateDirGuard::new);
 
     let paths = resolve_state_paths(
         &workdir,
