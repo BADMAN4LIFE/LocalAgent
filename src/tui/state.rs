@@ -199,8 +199,18 @@ impl UiState {
     }
 
     fn apply_tool_call_detected_event(&mut self, ev: &Event) {
-        let id = event_tool_call_id(&ev.data);
-        let name = event_tool_name(&ev.data).to_string();
+        let id = ev
+            .data
+            .get("tool_call_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
+        let name = ev
+            .data
+            .get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
         let side = ev
             .data
             .get("side_effects")
@@ -211,17 +221,6 @@ impl UiState {
     }
 
     fn apply_run_start_event(&mut self, ev: &Event) {
-        self.tool_calls.clear();
-        self.assistant_text.clear();
-        self.exit_reason = None;
-        self.total_tool_execs = 0;
-        self.filesystem_read_execs = 0;
-        self.filesystem_write_execs = 0;
-        self.shell_execs = 0;
-        self.network_execs = 0;
-        self.browser_execs = 0;
-        self.last_failure_class = "-".to_string();
-        self.last_tool_retry_count = 0;
         self.model = ev
             .data
             .get("model")
@@ -242,7 +241,6 @@ impl UiState {
         self.mcp_stalled = false;
         self.mcp_stall_notice_emitted = false;
         self.cancel_lifecycle = "NONE".to_string();
-        self.next_hint = "running".to_string();
     }
 
     fn apply_run_end_event(&mut self, ev: &Event) {
@@ -291,52 +289,6 @@ impl UiState {
                 }
             }
         }
-        if exit_reason.as_deref() != Some("cancelled") {
-            let final_output = ev
-                .data
-                .get("final_output")
-                .and_then(|v| v.as_str())
-                .unwrap_or_default();
-            let text = if final_output.trim().is_empty() {
-                self.assistant_text.as_str()
-            } else {
-                final_output
-            };
-            if text
-                .to_ascii_lowercase()
-                .contains("applied requested file changes and verified")
-            {
-                if let Some(row) = self.tool_calls.iter_mut().rev().find(|r| {
-                    r.side_effects == "filesystem_write"
-                        || r.tool_name == "apply_patch"
-                        || r.tool_name == "write_file"
-                }) {
-                    row.ok = Some(true);
-                    row.status = "OK:verified".to_string();
-                    row.reason_token = "-".to_string();
-                    if row.short_result.trim().is_empty() || row.short_result.contains("failed") {
-                        row.short_result = "verified by runtime finalize".to_string();
-                    }
-                } else {
-                    self.tool_calls.push(ToolRow {
-                        tool_call_id: "runtime-finalize:verified-write".to_string(),
-                        tool_name: "apply_patch".to_string(),
-                        side_effects: "filesystem_write".to_string(),
-                        decision: Some("allow".to_string()),
-                        decision_source: Some("runtime_finalize_fallback".to_string()),
-                        reason_token: "-".to_string(),
-                        decision_reason: Some(
-                            "write inferred from runtime finalize output".to_string(),
-                        ),
-                        status: "OK:verified".to_string(),
-                        running_since: None,
-                        running_for_ms: 0,
-                        ok: Some(true),
-                        short_result: "verified by runtime finalize".to_string(),
-                    });
-                }
-            }
-        }
         self.next_hint = "done".to_string();
     }
 
@@ -374,8 +326,18 @@ impl UiState {
     }
 
     fn apply_tool_decision_event(&mut self, ev: &Event) {
-        let id = event_tool_call_id(&ev.data);
-        let name = event_tool_name(&ev.data).to_string();
+        let id = ev
+            .data
+            .get("tool_call_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
+        let name = ev
+            .data
+            .get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
         let side = ev
             .data
             .get("side_effects")
@@ -438,8 +400,18 @@ impl UiState {
     }
 
     fn apply_tool_exec_start_event(&mut self, ev: &Event) {
-        let id = event_tool_call_id(&ev.data);
-        let name = event_tool_name(&ev.data).to_string();
+        let id = ev
+            .data
+            .get("tool_call_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
+        let name = ev
+            .data
+            .get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
         let side = ev
             .data
             .get("side_effects")
@@ -447,7 +419,12 @@ impl UiState {
             .unwrap_or_default()
             .to_string();
         let _ = self.upsert_tool(id, name, side, "running");
-        if is_mcp_tool(event_tool_name(&ev.data)) {
+        if is_mcp_tool(
+            ev.data
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default(),
+        ) {
             self.mcp_lifecycle = "RUNNING".to_string();
             self.mcp_running_for_ms = 0;
             self.mcp_stalled = false;
@@ -456,8 +433,18 @@ impl UiState {
     }
 
     fn apply_tool_exec_end_event(&mut self, ev: &Event) {
-        let id = event_tool_call_id(&ev.data);
-        let name = event_tool_name(&ev.data).to_string();
+        let id = ev
+            .data
+            .get("tool_call_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
+        let name = ev
+            .data
+            .get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
         let ok = ev.data.get("ok").and_then(|v| v.as_bool());
         let result = ev
             .data
@@ -475,10 +462,7 @@ impl UiState {
             row.short_result = truncate_chars(result, 200);
             row.running_since = None;
             row.running_for_ms = 0;
-            if matches!(ok, Some(true)) {
-                row.status = "OK:tool".to_string();
-                row.reason_token = "-".to_string();
-            } else if matches!(ok, Some(false)) {
+            if matches!(ok, Some(false)) {
                 let mut token = class_to_reason_token(failure_class).to_string();
                 if is_protocol_violation_text(result) {
                     token = "protocol".to_string();
@@ -491,13 +475,23 @@ impl UiState {
         if matches!(ok, Some(true)) {
             self.bump_usage(&side_effects);
             self.next_hint = "continue".to_string();
-            if is_mcp_tool(event_tool_name(&ev.data)) {
+            if is_mcp_tool(
+                ev.data
+                    .get("name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default(),
+            ) {
                 self.mcp_lifecycle = "DONE".to_string();
                 self.mcp_running_for_ms = 0;
                 self.mcp_stalled = false;
                 self.mcp_stall_notice_emitted = false;
             }
-        } else if is_mcp_tool(event_tool_name(&ev.data)) {
+        } else if is_mcp_tool(
+            ev.data
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default(),
+        ) {
             self.mcp_lifecycle = "FAIL".to_string();
             self.mcp_running_for_ms = 0;
             self.mcp_stalled = false;
@@ -548,40 +542,6 @@ impl UiState {
             "post_write_verify_end: path={} ok={} status={} elapsed_ms={}",
             path, ok, status, elapsed_ms
         ));
-        if ok {
-            if let Some(row) = self.tool_calls.iter_mut().rev().find(|r| {
-                (r.side_effects == "filesystem_write"
-                    || r.tool_name == "apply_patch"
-                    || r.tool_name == "write_file")
-                    && (r.ok != Some(true)
-                        || r.status == "running"
-                        || r.status.starts_with("FAIL:"))
-            }) {
-                row.ok = Some(true);
-                row.status = "OK:verified".to_string();
-                row.reason_token = "-".to_string();
-                if row.short_result.trim().is_empty() {
-                    row.short_result = format!("verified by runtime: {path}");
-                }
-            } else {
-                self.tool_calls.push(ToolRow {
-                    tool_call_id: format!("runtime-verify:{path}"),
-                    tool_name: "apply_patch".to_string(),
-                    side_effects: "filesystem_write".to_string(),
-                    decision: Some("allow".to_string()),
-                    decision_source: Some("runtime_post_write_verify".to_string()),
-                    reason_token: "-".to_string(),
-                    decision_reason: Some(
-                        "write inferred from runtime post-write verification".to_string(),
-                    ),
-                    status: "OK:verified".to_string(),
-                    running_since: None,
-                    running_for_ms: 0,
-                    ok: Some(true),
-                    short_result: format!("verified by runtime: {path}"),
-                });
-            }
-        }
         self.next_hint = if ok {
             "continue".to_string()
         } else {
@@ -1010,36 +970,10 @@ impl UiState {
         side_effects: String,
         status: &str,
     ) -> &mut ToolRow {
-        let is_inflight_status = |s: &str| matches!(s, "detected" | "decided" | "running");
-
-        // Some providers reuse or omit tool_call_id. Match the most recent
-        // compatible row instead of the first id match to avoid cross-tool
-        // collapse when ids are recycled.
         if let Some(idx) = self
             .tool_calls
             .iter()
-            .enumerate()
-            .rev()
-            .find_map(|(idx, t)| {
-                if t.tool_call_id != tool_call_id {
-                    return None;
-                }
-                if !tool_name.is_empty() && !t.tool_name.is_empty() && t.tool_name != tool_name {
-                    return None;
-                }
-                // For nameless updates, prefer in-flight rows and avoid mutating
-                // already-completed rows from earlier tools that reused the id.
-                if tool_name.is_empty() && !is_inflight_status(t.status.as_str()) {
-                    return None;
-                }
-                if !side_effects.is_empty()
-                    && !t.side_effects.is_empty()
-                    && t.side_effects != side_effects
-                {
-                    return None;
-                }
-                Some(idx)
-            })
+            .position(|t| t.tool_call_id == tool_call_id)
         {
             let row = &mut self.tool_calls[idx];
             row.status = status.to_string();
@@ -1055,48 +989,6 @@ impl UiState {
             }
             return row;
         }
-
-        // Fallback for providers that omit or mutate tool_call_id between
-        // lifecycle events: reconcile against the latest compatible in-flight row.
-        if let Some(idx) = self
-            .tool_calls
-            .iter()
-            .enumerate()
-            .rev()
-            .find_map(|(idx, t)| {
-                if !is_inflight_status(t.status.as_str()) {
-                    return None;
-                }
-                if !tool_name.is_empty() && !t.tool_name.is_empty() && t.tool_name != tool_name {
-                    return None;
-                }
-                if !side_effects.is_empty()
-                    && !t.side_effects.is_empty()
-                    && t.side_effects != side_effects
-                {
-                    return None;
-                }
-                Some(idx)
-            })
-        {
-            let row = &mut self.tool_calls[idx];
-            row.status = status.to_string();
-            if status == "running" && row.running_since.is_none() {
-                row.running_since = Some(Instant::now());
-                row.running_for_ms = 0;
-            }
-            if row.tool_call_id.is_empty() && !tool_call_id.is_empty() {
-                row.tool_call_id = tool_call_id;
-            }
-            if !tool_name.is_empty() {
-                row.tool_name = tool_name;
-            }
-            if !side_effects.is_empty() {
-                row.side_effects = side_effects;
-            }
-            return row;
-        }
-
         self.tool_calls.push(ToolRow {
             tool_call_id,
             tool_name,
@@ -1188,35 +1080,6 @@ fn class_to_reason_token(class: &str) -> &'static str {
         "E_SELECTOR_AMBIGUOUS" | "E_NON_IDEMPOTENT" | "E_OTHER" => "tool",
         _ => "other",
     }
-}
-
-fn event_tool_name(data: &serde_json::Value) -> &str {
-    data.get("name")
-        .and_then(|v| v.as_str())
-        .or_else(|| data.get("tool").and_then(|v| v.as_str()))
-        .unwrap_or_default()
-}
-
-fn event_tool_call_id(data: &serde_json::Value) -> String {
-    if let Some(s) = data.get("tool_call_id").and_then(|v| v.as_str()) {
-        return s.to_string();
-    }
-    if let Some(u) = data.get("tool_call_id").and_then(|v| v.as_u64()) {
-        return u.to_string();
-    }
-    if let Some(i) = data.get("tool_call_id").and_then(|v| v.as_i64()) {
-        return i.to_string();
-    }
-    if let Some(s) = data.get("id").and_then(|v| v.as_str()) {
-        return s.to_string();
-    }
-    if let Some(u) = data.get("id").and_then(|v| v.as_u64()) {
-        return u.to_string();
-    }
-    if let Some(i) = data.get("id").and_then(|v| v.as_i64()) {
-        return i.to_string();
-    }
-    String::new()
 }
 
 fn short_hash(s: &str) -> String {
@@ -1381,220 +1244,6 @@ mod tests {
         assert_eq!(s.tool_calls[0].short_result, "abc");
         assert_eq!(s.total_tool_execs, 1);
         assert_eq!(s.filesystem_read_execs, 1);
-    }
-
-    #[test]
-    fn run_start_resets_tool_rows_and_per_run_counters() {
-        let mut s = UiState::new(10);
-        s.apply_event(&Event::new(
-            "r1".to_string(),
-            1,
-            EventKind::ToolCallDetected,
-            serde_json::json!({"tool_call_id":"tc_old","name":"apply_patch","side_effects":"filesystem_write"}),
-        ));
-        s.apply_event(&Event::new(
-            "r1".to_string(),
-            1,
-            EventKind::ToolExecEnd,
-            serde_json::json!({"tool_call_id":"tc_old","name":"apply_patch","ok":false,"content":"failed","failure_class":"E_NON_IDEMPOTENT"}),
-        ));
-        assert_eq!(s.tool_calls.len(), 1);
-        assert_eq!(s.total_tool_execs, 0);
-        assert_eq!(s.filesystem_write_execs, 0);
-
-        s.apply_event(&Event::new(
-            "r2".to_string(),
-            0,
-            EventKind::RunStart,
-            serde_json::json!({"model":"m"}),
-        ));
-        assert!(s.tool_calls.is_empty());
-        assert_eq!(s.total_tool_execs, 0);
-        assert_eq!(s.filesystem_read_execs, 0);
-        assert_eq!(s.filesystem_write_execs, 0);
-        assert_eq!(s.shell_execs, 0);
-        assert_eq!(s.network_execs, 0);
-        assert_eq!(s.browser_execs, 0);
-        assert_eq!(s.last_failure_class, "-");
-        assert_eq!(s.next_hint, "running");
-    }
-
-    #[test]
-    fn same_tool_call_id_across_different_tools_keeps_distinct_rows() {
-        let mut s = UiState::new(10);
-        s.apply_event(&Event::new(
-            "r1".to_string(),
-            1,
-            EventKind::ToolCallDetected,
-            serde_json::json!({"tool_call_id":"shared","name":"read_file","side_effects":"filesystem_read"}),
-        ));
-        s.apply_event(&Event::new(
-            "r1".to_string(),
-            1,
-            EventKind::ToolExecEnd,
-            serde_json::json!({"tool_call_id":"shared","name":"read_file","ok":true,"content":"ok"}),
-        ));
-        s.apply_event(&Event::new(
-            "r1".to_string(),
-            1,
-            EventKind::ToolCallDetected,
-            serde_json::json!({"tool_call_id":"shared","name":"apply_patch","side_effects":"filesystem_write"}),
-        ));
-        s.apply_event(&Event::new(
-            "r1".to_string(),
-            1,
-            EventKind::ToolExecEnd,
-            serde_json::json!({"tool_call_id":"shared","name":"apply_patch","ok":true,"content":"ok"}),
-        ));
-
-        assert_eq!(s.tool_calls.len(), 2);
-        assert_eq!(s.tool_calls[0].tool_name, "read_file");
-        assert_eq!(s.tool_calls[1].tool_name, "apply_patch");
-        assert_eq!(s.tool_calls[0].status, "OK:tool");
-        assert_eq!(s.tool_calls[1].status, "OK:tool");
-    }
-
-    #[test]
-    fn projected_tool_key_populates_tool_rows() {
-        let mut s = UiState::new(10);
-        s.apply_event(&Event::new(
-            "r1".to_string(),
-            1,
-            EventKind::ToolCallDetected,
-            serde_json::json!({"tool_call_id":"tc1","tool":"read_file","side_effects":"filesystem_read"}),
-        ));
-        s.apply_event(&Event::new(
-            "r1".to_string(),
-            1,
-            EventKind::ToolExecEnd,
-            serde_json::json!({"tool_call_id":"tc1","tool":"read_file","ok":true,"content":"ok"}),
-        ));
-        s.apply_event(&Event::new(
-            "r1".to_string(),
-            2,
-            EventKind::ToolCallDetected,
-            serde_json::json!({"tool_call_id":"tc2","tool":"apply_patch","side_effects":"filesystem_write"}),
-        ));
-        s.apply_event(&Event::new(
-            "r1".to_string(),
-            2,
-            EventKind::ToolExecEnd,
-            serde_json::json!({"tool_call_id":"tc2","tool":"apply_patch","ok":true,"content":"ok"}),
-        ));
-        assert_eq!(s.tool_calls.len(), 2);
-        assert_eq!(s.tool_calls[0].tool_name, "read_file");
-        assert_eq!(s.tool_calls[1].tool_name, "apply_patch");
-    }
-
-    #[test]
-    fn numeric_tool_call_id_does_not_collapse_distinct_tools() {
-        let mut s = UiState::new(10);
-        s.apply_event(&Event::new(
-            "r1".to_string(),
-            1,
-            EventKind::ToolCallDetected,
-            serde_json::json!({"tool_call_id":101,"tool":"read_file","side_effects":"filesystem_read"}),
-        ));
-        s.apply_event(&Event::new(
-            "r1".to_string(),
-            1,
-            EventKind::ToolExecEnd,
-            serde_json::json!({"tool_call_id":101,"tool":"read_file","ok":true,"content":"ok"}),
-        ));
-        s.apply_event(&Event::new(
-            "r1".to_string(),
-            2,
-            EventKind::ToolCallDetected,
-            serde_json::json!({"tool_call_id":202,"tool":"apply_patch","side_effects":"filesystem_write"}),
-        ));
-        s.apply_event(&Event::new(
-            "r1".to_string(),
-            2,
-            EventKind::ToolExecEnd,
-            serde_json::json!({"tool_call_id":202,"tool":"apply_patch","ok":true,"content":"ok"}),
-        ));
-        assert_eq!(s.tool_calls.len(), 2);
-        assert_eq!(s.tool_calls[0].tool_name, "read_file");
-        assert_eq!(s.tool_calls[1].tool_name, "apply_patch");
-    }
-
-    #[test]
-    fn nameless_exec_end_with_reused_id_updates_latest_inflight_tool() {
-        let mut s = UiState::new(10);
-        s.apply_event(&Event::new(
-            "r1".to_string(),
-            1,
-            EventKind::ToolCallDetected,
-            serde_json::json!({"tool_call_id":"shared","name":"read_file","side_effects":"filesystem_read"}),
-        ));
-        s.apply_event(&Event::new(
-            "r1".to_string(),
-            1,
-            EventKind::ToolExecEnd,
-            serde_json::json!({"tool_call_id":"shared","name":"read_file","ok":true,"content":"ok"}),
-        ));
-        s.apply_event(&Event::new(
-            "r1".to_string(),
-            1,
-            EventKind::ToolCallDetected,
-            serde_json::json!({"tool_call_id":"shared","name":"apply_patch","side_effects":"filesystem_write"}),
-        ));
-        s.apply_event(&Event::new(
-            "r1".to_string(),
-            1,
-            EventKind::ToolExecEnd,
-            serde_json::json!({"tool_call_id":"shared","ok":true,"content":"ok"}),
-        ));
-
-        assert_eq!(s.tool_calls.len(), 2);
-        assert_eq!(s.tool_calls[0].tool_name, "read_file");
-        assert_eq!(s.tool_calls[1].tool_name, "apply_patch");
-        assert_eq!(s.tool_calls[0].status, "OK:tool");
-        assert_eq!(s.tool_calls[1].status, "OK:tool");
-    }
-
-    #[test]
-    fn exec_end_without_id_or_name_updates_latest_inflight_patch_row() {
-        let mut s = UiState::new(10);
-        s.apply_event(&Event::new(
-            "r1".to_string(),
-            1,
-            EventKind::ToolExecStart,
-            serde_json::json!({"tool_call_id":"tc_patch","name":"apply_patch","side_effects":"filesystem_write"}),
-        ));
-        s.apply_event(&Event::new(
-            "r1".to_string(),
-            1,
-            EventKind::ToolExecEnd,
-            serde_json::json!({"ok":true,"content":"ok"}),
-        ));
-
-        assert_eq!(s.tool_calls.len(), 1);
-        assert_eq!(s.tool_calls[0].tool_name, "apply_patch");
-        assert_eq!(s.tool_calls[0].status, "OK:tool");
-        assert_eq!(s.tool_calls[0].ok, Some(true));
-    }
-
-    #[test]
-    fn exec_end_with_mismatched_id_updates_inflight_patch_row() {
-        let mut s = UiState::new(10);
-        s.apply_event(&Event::new(
-            "r1".to_string(),
-            1,
-            EventKind::ToolExecStart,
-            serde_json::json!({"tool_call_id":"tc_patch_start","name":"apply_patch","side_effects":"filesystem_write"}),
-        ));
-        s.apply_event(&Event::new(
-            "r1".to_string(),
-            1,
-            EventKind::ToolExecEnd,
-            serde_json::json!({"tool_call_id":"tc_patch_end","name":"apply_patch","ok":true,"content":"ok"}),
-        ));
-
-        assert_eq!(s.tool_calls.len(), 1);
-        assert_eq!(s.tool_calls[0].tool_name, "apply_patch");
-        assert_eq!(s.tool_calls[0].status, "OK:tool");
-        assert_eq!(s.tool_calls[0].ok, Some(true));
     }
 
     #[test]
@@ -1893,120 +1542,6 @@ mod tests {
     }
 
     #[test]
-    fn run_end_synthesizes_verified_write_row_when_finalize_text_indicates_write() {
-        let mut s = UiState::new(10);
-        s.apply_event(&Event::new(
-            "r1".to_string(),
-            1,
-            EventKind::ToolCallDetected,
-            serde_json::json!({"tool_call_id":"tc1","tool":"read_file","side_effects":"filesystem_read"}),
-        ));
-        s.apply_event(&Event::new(
-            "r1".to_string(),
-            1,
-            EventKind::ToolExecEnd,
-            serde_json::json!({"tool_call_id":"tc1","tool":"read_file","ok":true,"content":"ok"}),
-        ));
-        s.assistant_text = "Applied requested file changes and verified: main.rs.".to_string();
-        s.apply_event(&Event::new(
-            "r1".to_string(),
-            1,
-            EventKind::RunEnd,
-            serde_json::json!({"exit_reason":"ok"}),
-        ));
-        assert_eq!(s.tool_calls.len(), 2);
-        assert_eq!(s.tool_calls[1].tool_name, "apply_patch");
-        assert_eq!(s.tool_calls[1].status, "OK:verified");
-        assert_eq!(s.tool_calls[1].ok, Some(true));
-    }
-
-    #[test]
-    fn run_end_uses_final_output_when_assistant_text_is_empty() {
-        let mut s = UiState::new(10);
-        s.apply_event(&Event::new(
-            "r1".to_string(),
-            1,
-            EventKind::ToolCallDetected,
-            serde_json::json!({"tool_call_id":"tc1","tool":"read_file","side_effects":"filesystem_read"}),
-        ));
-        s.apply_event(&Event::new(
-            "r1".to_string(),
-            1,
-            EventKind::ToolExecEnd,
-            serde_json::json!({"tool_call_id":"tc1","tool":"read_file","ok":true,"content":"ok"}),
-        ));
-        s.apply_event(&Event::new(
-            "r1".to_string(),
-            1,
-            EventKind::RunEnd,
-            serde_json::json!({
-                "exit_reason":"ok",
-                "final_output":"Applied requested file changes and verified: main.rs."
-            }),
-        ));
-        assert_eq!(s.tool_calls.len(), 2);
-        assert_eq!(s.tool_calls[1].tool_name, "apply_patch");
-        assert_eq!(s.tool_calls[1].status, "OK:verified");
-        assert_eq!(s.tool_calls[1].ok, Some(true));
-    }
-
-    #[test]
-    fn run_end_synthesizes_verified_write_row_on_non_ok_exit_when_text_indicates_write() {
-        let mut s = UiState::new(10);
-        s.apply_event(&Event::new(
-            "r1".to_string(),
-            1,
-            EventKind::ToolCallDetected,
-            serde_json::json!({"tool_call_id":"tc1","tool":"read_file","side_effects":"filesystem_read"}),
-        ));
-        s.apply_event(&Event::new(
-            "r1".to_string(),
-            1,
-            EventKind::ToolExecEnd,
-            serde_json::json!({"tool_call_id":"tc1","tool":"read_file","ok":true,"content":"ok"}),
-        ));
-        s.assistant_text = "Applied requested file changes and verified: main.rs.".to_string();
-        s.apply_event(&Event::new(
-            "r1".to_string(),
-            1,
-            EventKind::RunEnd,
-            serde_json::json!({"exit_reason":"planner_error"}),
-        ));
-        assert_eq!(s.tool_calls.len(), 2);
-        assert_eq!(s.tool_calls[1].tool_name, "apply_patch");
-        assert_eq!(s.tool_calls[1].status, "OK:verified");
-        assert_eq!(s.tool_calls[1].ok, Some(true));
-    }
-
-    #[test]
-    fn run_end_upgrades_latest_failed_write_row_when_text_indicates_verified_write() {
-        let mut s = UiState::new(10);
-        s.apply_event(&Event::new(
-            "r1".to_string(),
-            1,
-            EventKind::ToolCallDetected,
-            serde_json::json!({"tool_call_id":"tc1","name":"apply_patch","side_effects":"filesystem_write"}),
-        ));
-        s.apply_event(&Event::new(
-            "r1".to_string(),
-            1,
-            EventKind::ToolExecEnd,
-            serde_json::json!({"tool_call_id":"tc1","name":"apply_patch","ok":false,"content":"failed","failure_class":"E_NON_IDEMPOTENT"}),
-        ));
-        s.assistant_text = "Applied requested file changes and verified: main.rs.".to_string();
-        s.apply_event(&Event::new(
-            "r1".to_string(),
-            1,
-            EventKind::RunEnd,
-            serde_json::json!({"exit_reason":"ok"}),
-        ));
-        assert_eq!(s.tool_calls.len(), 1);
-        assert_eq!(s.tool_calls[0].tool_name, "apply_patch");
-        assert_eq!(s.tool_calls[0].status, "OK:verified");
-        assert_eq!(s.tool_calls[0].ok, Some(true));
-    }
-
-    #[test]
     fn tool_protocol_guard_error_closes_running_tool_row() {
         let mut s = UiState::new(10);
         s.apply_event(&Event::new(
@@ -2058,59 +1593,6 @@ mod tests {
         assert!(s.mcp_stalled);
         assert!(s.mcp_running_for_ms >= 12_000);
         assert_eq!(s.tool_calls[0].status, "STALL");
-    }
-
-    #[test]
-    fn post_write_verify_success_marks_latest_write_row_verified() {
-        let mut s = UiState::new(10);
-        s.apply_event(&Event::new(
-            "r1".to_string(),
-            1,
-            EventKind::ToolCallDetected,
-            serde_json::json!({"tool_call_id":"tc1","name":"apply_patch","side_effects":"filesystem_write"}),
-        ));
-        s.apply_event(&Event::new(
-            "r1".to_string(),
-            1,
-            EventKind::ToolExecEnd,
-            serde_json::json!({"tool_call_id":"tc1","name":"apply_patch","ok":false,"content":"failed","failure_class":"E_NON_IDEMPOTENT"}),
-        ));
-        assert_eq!(s.tool_calls[0].status, "FAIL:tool");
-        s.apply_event(&Event::new(
-            "r1".to_string(),
-            1,
-            EventKind::PostWriteVerifyEnd,
-            serde_json::json!({"path":"main.rs","ok":true,"status":"ok","elapsed_ms":1}),
-        ));
-        assert_eq!(s.tool_calls[0].ok, Some(true));
-        assert_eq!(s.tool_calls[0].status, "OK:verified");
-    }
-
-    #[test]
-    fn post_write_verify_success_creates_fallback_write_row_when_missing() {
-        let mut s = UiState::new(10);
-        s.apply_event(&Event::new(
-            "r1".to_string(),
-            1,
-            EventKind::ToolCallDetected,
-            serde_json::json!({"tool_call_id":"tc1","tool":"read_file","side_effects":"filesystem_read"}),
-        ));
-        s.apply_event(&Event::new(
-            "r1".to_string(),
-            1,
-            EventKind::ToolExecEnd,
-            serde_json::json!({"tool_call_id":"tc1","tool":"read_file","ok":true,"content":"ok"}),
-        ));
-        s.apply_event(&Event::new(
-            "r1".to_string(),
-            1,
-            EventKind::PostWriteVerifyEnd,
-            serde_json::json!({"path":"main.rs","ok":true,"status":"ok","elapsed_ms":1}),
-        ));
-        assert_eq!(s.tool_calls.len(), 2);
-        assert_eq!(s.tool_calls[1].tool_name, "apply_patch");
-        assert_eq!(s.tool_calls[1].status, "OK:verified");
-        assert_eq!(s.tool_calls[1].ok, Some(true));
     }
 
     #[test]

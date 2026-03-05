@@ -649,13 +649,11 @@ fn implementation_guard_requires_post_write_read_back_without_bypass() {
             name: "read_file".to_string(),
             path: Some("main.rs".to_string()),
             ok: true,
-            changed: None,
         },
         crate::agent_impl_guard::ToolExecutionRecord {
             name: "apply_patch".to_string(),
             path: Some("main.rs".to_string()),
             ok: true,
-            changed: None,
         },
     ];
     let err = crate::agent_impl_guard::implementation_integrity_violation_with_tool_executions(
@@ -688,13 +686,11 @@ fn implementation_guard_requires_successful_read_before_apply_patch() {
             name: "read_file".to_string(),
             path: Some("chess.html".to_string()),
             ok: false,
-            changed: None,
         },
         crate::agent_impl_guard::ToolExecutionRecord {
             name: "apply_patch".to_string(),
             path: Some("chess.html".to_string()),
             ok: true,
-            changed: None,
         },
     ];
     let err = crate::agent_impl_guard::implementation_integrity_violation_with_tool_executions(
@@ -732,19 +728,16 @@ fn implementation_guard_requires_successful_post_write_read_back() {
             name: "read_file".to_string(),
             path: Some("chess.html".to_string()),
             ok: true,
-            changed: None,
         },
         crate::agent_impl_guard::ToolExecutionRecord {
             name: "apply_patch".to_string(),
             path: Some("chess.html".to_string()),
             ok: true,
-            changed: None,
         },
         crate::agent_impl_guard::ToolExecutionRecord {
             name: "read_file".to_string(),
             path: Some("chess.html".to_string()),
             ok: false,
-            changed: None,
         },
     ];
     let err = crate::agent_impl_guard::implementation_integrity_violation_with_tool_executions(
@@ -782,19 +775,16 @@ fn implementation_guard_rejects_noop_apply_patch_even_with_read_back() {
             name: "read_file".to_string(),
             path: Some("main.rs".to_string()),
             ok: true,
-            changed: None,
         },
         crate::agent_impl_guard::ToolExecutionRecord {
             name: "apply_patch".to_string(),
             path: Some("main.rs".to_string()),
             ok: true,
-            changed: Some(false),
         },
         crate::agent_impl_guard::ToolExecutionRecord {
             name: "read_file".to_string(),
             path: Some("main.rs".to_string()),
             ok: true,
-            changed: None,
         },
     ];
     let err = crate::agent_impl_guard::implementation_integrity_violation_with_tool_executions(
@@ -834,19 +824,16 @@ fn implementation_guard_accepts_dot_prefixed_post_write_read_back() {
             name: "read_file".to_string(),
             path: Some(crate::agent_impl_guard::normalize_tool_path("./main.rs")),
             ok: true,
-            changed: None,
         },
         crate::agent_impl_guard::ToolExecutionRecord {
             name: "apply_patch".to_string(),
             path: Some(crate::agent_impl_guard::normalize_tool_path("main.rs")),
             ok: true,
-            changed: None,
         },
         crate::agent_impl_guard::ToolExecutionRecord {
             name: "read_file".to_string(),
             path: Some(crate::agent_impl_guard::normalize_tool_path("./main.rs")),
             ok: true,
-            changed: None,
         },
     ];
     let err = crate::agent_impl_guard::implementation_integrity_violation_with_tool_executions(
@@ -873,7 +860,6 @@ fn implementation_guard_requires_explicit_enforcement_signal() {
         name: "apply_patch".to_string(),
         path: Some("main.rs".to_string()),
         ok: true,
-        changed: None,
     }];
     let err = crate::agent_impl_guard::implementation_integrity_violation_with_tool_executions(
         "improve main.rs",
@@ -895,25 +881,21 @@ fn pending_post_write_verification_paths_tracks_only_unverified_writes() {
             name: "read_file".to_string(),
             path: Some("a.rs".to_string()),
             ok: true,
-            changed: None,
         },
         crate::agent_impl_guard::ToolExecutionRecord {
             name: "apply_patch".to_string(),
             path: Some("a.rs".to_string()),
             ok: true,
-            changed: None,
         },
         crate::agent_impl_guard::ToolExecutionRecord {
             name: "write_file".to_string(),
             path: Some("b.rs".to_string()),
             ok: true,
-            changed: None,
         },
         crate::agent_impl_guard::ToolExecutionRecord {
             name: "read_file".to_string(),
             path: Some("a.rs".to_string()),
             ok: true,
-            changed: None,
         },
     ];
     let pending = crate::agent_impl_guard::pending_post_write_verification_paths(&executions);

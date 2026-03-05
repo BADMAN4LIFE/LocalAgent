@@ -13,8 +13,8 @@ use crate::agent_tool_exec::ToolRunOutcome;
 use crate::agent_tool_exec::{
     classify_tool_failure, contains_tool_wrapper_markers, extract_content_tool_calls,
     infer_truncated_flag, is_apply_patch_invalid_format_error, make_invalid_args_tool_message,
-    run_tool_once, schema_repair_instruction_message, tool_result_changed_flag,
-    tool_result_error_code, tool_result_has_error,
+    run_tool_once, schema_repair_instruction_message, tool_result_error_code,
+    tool_result_has_error,
 };
 use crate::agent_utils::{add_opt_u32, provider_name, sha256_hex};
 use crate::agent_worker_protocol::parse_worker_step_status;
@@ -818,17 +818,11 @@ Fallback when native tool calls are unavailable:\n\
     ) -> AgentOutcome {
         let run_id = input.run_id.clone();
         let exit_reason = input.exit_reason.as_str().to_string();
-        let final_output = input.final_output.clone();
-        let error = input.error.clone();
         self.emit_event(
             &run_id,
             step,
             EventKind::RunEnd,
-            serde_json::json!({
-                "exit_reason": exit_reason,
-                "final_output": final_output,
-                "error": error
-            }),
+            serde_json::json!({"exit_reason": exit_reason}),
         );
         self.finalize_run_outcome(input, saw_token_usage, total_token_usage, taint_state)
     }
@@ -1959,6 +1953,7 @@ Fallback when native tool calls are unavailable:\n\
                     );
                 }
                 RuntimeCompletionDecision::FinalizeOk => {
+                    blocked_runtime_completion_count = 0;
                     let (queue_delivered, queue_interrupted) = self
                         .deliver_operator_queue_at_boundary(
                             &run_id,
@@ -1973,7 +1968,7 @@ Fallback when native tool calls are unavailable:\n\
                         if !matches!(self.plan_tool_enforcement, PlanToolEnforcementMode::Off)
                             && !self.plan_step_constraints.is_empty()
                         {
-                            last_user_output.clone().unwrap_or_default()
+                            last_user_output.unwrap_or_default()
                         } else {
                             assistant.content.unwrap_or_default()
                         };
@@ -2084,7 +2079,6 @@ Fallback when native tool calls are unavailable:\n\
                                 name: "read_file".to_string(),
                                 path: Some(path.clone()),
                                 ok: verify.ok,
-                                changed: None,
                             });
                             if !verify.ok {
                                 let reason = format!(
@@ -2136,45 +2130,6 @@ Fallback when native tool calls are unavailable:\n\
                         &observed_tool_executions,
                         enforce_implementation_integrity_guard,
                     ) {
-                        let saw_write_attempt = observed_tool_executions
-                            .iter()
-                            .any(|e| matches!(e.name.as_str(), "apply_patch" | "write_file"));
-                        if !saw_write_attempt
-                            && reason.contains("without an effective write")
-                            && blocked_runtime_completion_count < 2
-                        {
-                            blocked_runtime_completion_count =
-                                blocked_runtime_completion_count.saturating_add(1);
-                            let corrective_instruction = "Implementation task requires at least one effective write tool call. Use read_file + apply_patch (or write_file when creating a new file), then verify with read_file before finalizing.";
-                            self.emit_event(
-                                &run_id,
-                                step as u32,
-                                EventKind::Error,
-                                serde_json::json!({
-                                    "error": corrective_instruction,
-                                    "source": "implementation_integrity_guard",
-                                    "reason_code": "implementation_requires_effective_write",
-                                    "blocked_count": blocked_runtime_completion_count
-                                }),
-                            );
-                            self.emit_event(
-                                &run_id,
-                                step as u32,
-                                EventKind::StepBlocked,
-                                serde_json::json!({
-                                    "reason": "implementation_requires_effective_write",
-                                    "blocked_count": blocked_runtime_completion_count
-                                }),
-                            );
-                            messages.push(Message {
-                                role: Role::Developer,
-                                content: Some(corrective_instruction.to_string()),
-                                tool_call_id: None,
-                                tool_name: None,
-                                tool_calls: None,
-                            });
-                            continue 'agent_steps;
-                        }
                         self.emit_event(
                             &run_id,
                             step as u32,
@@ -2215,11 +2170,7 @@ Fallback when native tool calls are unavailable:\n\
                         &run_id,
                         step as u32,
                         EventKind::RunEnd,
-                        serde_json::json!({
-                            "exit_reason":"ok",
-                            "final_output": final_output,
-                            "error": serde_json::Value::Null
-                        }),
+                        serde_json::json!({"exit_reason":"ok"}),
                     );
                     return self.finalize_run_outcome(
                         AgentOutcomeBuilderInput {
@@ -2247,7 +2198,6 @@ Fallback when native tool calls are unavailable:\n\
                 }
             }
 
-            let mut successful_write_tool_ok_this_step = false;
             for tc in &resp.tool_calls {
                 self.record_detected_tool_call(&run_id, step as u32, tc, &mut observed_tool_calls);
                 if tc.name.starts_with("mcp.") {
@@ -4043,11 +3993,6 @@ Fallback when native tool calls are unavailable:\n\
                             name: tc.name.clone(),
                             path: normalized_tool_path_from_args(tc),
                             ok: final_ok,
-                            changed: if tc.name == "apply_patch" {
-                                tool_result_changed_flag(&content)
-                            } else {
-                                None
-                            },
                         });
                         let final_failure_class = if tool_result_has_error(&content) {
                             Some(classify_tool_failure(
@@ -4129,9 +4074,6 @@ Fallback when native tool calls are unavailable:\n\
                             failed_repeat_counts.remove(&repeat_key);
                             if tc.name == "apply_patch" {
                                 invalid_patch_format_attempts.remove(&repeat_key);
-                            }
-                            if tc.name == "apply_patch" || tc.name == "write_file" {
-                                successful_write_tool_ok_this_step = true;
                             }
                         } else {
                             let n = failed_repeat_counts.entry(repeat_key).or_insert(0);
@@ -4559,240 +4501,6 @@ Fallback when native tool calls are unavailable:\n\
                         );
                     }
                 }
-            }
-
-            if enforce_implementation_integrity_guard && successful_write_tool_ok_this_step {
-                let post_write_verify_timeout_ms = self.effective_post_write_verify_timeout_ms();
-                let pending_post_write_paths =
-                    pending_post_write_verification_paths(&observed_tool_executions);
-                let verified_paths = pending_post_write_paths.iter().cloned().collect::<Vec<_>>();
-                for path in pending_post_write_paths {
-                    self.emit_event(
-                        &run_id,
-                        step as u32,
-                        EventKind::PostWriteVerifyStart,
-                        serde_json::json!({
-                            "name": "read_file",
-                            "path": path.clone(),
-                            "source": "runtime_post_write_verify",
-                            "timeout_ms": post_write_verify_timeout_ms
-                        }),
-                    );
-                    let verify_started = Instant::now();
-                    let verify = match tokio::time::timeout(
-                        Duration::from_millis(post_write_verify_timeout_ms),
-                        self.tool_rt.exec_target.read_file(crate::target::ReadReq {
-                            workdir: self.tool_rt.workdir.clone(),
-                            path: path.clone(),
-                            max_read_bytes: self.tool_rt.max_read_bytes,
-                        }),
-                    )
-                    .await
-                    {
-                        Ok(result) => result,
-                        Err(_) => {
-                            self.emit_event(
-                                &run_id,
-                                step as u32,
-                                EventKind::PostWriteVerifyEnd,
-                                serde_json::json!({
-                                    "name": "read_file",
-                                    "path": path.clone(),
-                                    "ok": false,
-                                    "status": "timeout",
-                                    "source": "runtime_post_write_verify",
-                                    "failure_class": "E_RUNTIME_POST_WRITE_VERIFY_TIMEOUT",
-                                    "elapsed_ms": verify_started.elapsed().as_millis() as u64,
-                                    "timeout_ms": post_write_verify_timeout_ms
-                                }),
-                            );
-                            let reason = format!(
-                                "implementation guard: runtime post-write verification timed out on read_file for '{path}' after {}ms",
-                                post_write_verify_timeout_ms
-                            );
-                            self.emit_event(
-                                &run_id,
-                                step as u32,
-                                EventKind::Error,
-                                serde_json::json!({
-                                    "error": reason,
-                                    "source": "implementation_integrity_guard",
-                                    "failure_class": "E_RUNTIME_POST_WRITE_VERIFY_TIMEOUT",
-                                    "path": path.clone(),
-                                    "timeout_ms": post_write_verify_timeout_ms
-                                }),
-                            );
-                            self.emit_event(
-                                &run_id,
-                                step as u32,
-                                EventKind::RunEnd,
-                                serde_json::json!({"exit_reason":"planner_error"}),
-                            );
-                            return self.finalize_run_outcome(
-                                AgentOutcomeBuilderInput {
-                                    run_id,
-                                    started_at,
-                                    exit_reason: AgentExitReason::PlannerError,
-                                    final_output: String::new(),
-                                    error: Some(reason),
-                                    messages,
-                                    tool_calls: observed_tool_calls,
-                                    tool_decisions: observed_tool_decisions,
-                                    final_prompt_size_chars: request_context_chars,
-                                    compaction_report: last_compaction_report,
-                                    hook_invocations,
-                                    provider_retry_count,
-                                    provider_error_count,
-                                },
-                                saw_token_usage,
-                                &total_token_usage,
-                                &taint_state,
-                            );
-                        }
-                    };
-                    self.emit_event(
-                        &run_id,
-                        step as u32,
-                        EventKind::PostWriteVerifyEnd,
-                        serde_json::json!({
-                            "name": "read_file",
-                            "path": path.clone(),
-                            "ok": verify.ok,
-                            "status": if verify.ok { "ok" } else { "failed" },
-                            "source": "runtime_post_write_verify",
-                            "failure_class": if verify.ok { serde_json::Value::Null } else { serde_json::Value::String("E_RUNTIME_POST_WRITE_VERIFY_FAILED".to_string()) },
-                            "elapsed_ms": verify_started.elapsed().as_millis() as u64
-                        }),
-                    );
-                    observed_tool_executions.push(ToolExecutionRecord {
-                        name: "read_file".to_string(),
-                        path: Some(path.clone()),
-                        ok: verify.ok,
-                        changed: None,
-                    });
-                    if !verify.ok {
-                        let reason = format!(
-                            "implementation guard: runtime post-write verification failed read_file on '{path}': {}",
-                            verify.content
-                        );
-                        self.emit_event(
-                            &run_id,
-                            step as u32,
-                            EventKind::Error,
-                            serde_json::json!({
-                                "error": reason,
-                                "source": "implementation_integrity_guard"
-                            }),
-                        );
-                        self.emit_event(
-                            &run_id,
-                            step as u32,
-                            EventKind::RunEnd,
-                            serde_json::json!({"exit_reason":"planner_error"}),
-                        );
-                        return self.finalize_run_outcome(
-                            AgentOutcomeBuilderInput {
-                                run_id,
-                                started_at,
-                                exit_reason: AgentExitReason::PlannerError,
-                                final_output: String::new(),
-                                error: Some(reason),
-                                messages,
-                                tool_calls: observed_tool_calls,
-                                tool_decisions: observed_tool_decisions,
-                                final_prompt_size_chars: request_context_chars,
-                                compaction_report: last_compaction_report,
-                                hook_invocations,
-                                provider_retry_count,
-                                provider_error_count,
-                            },
-                            saw_token_usage,
-                            &total_token_usage,
-                            &taint_state,
-                        );
-                    }
-                }
-                let final_output = if verified_paths.is_empty() {
-                    "Applied requested file changes and verified.".to_string()
-                } else {
-                    format!(
-                        "Applied requested file changes and verified: {}.",
-                        verified_paths.join(", ")
-                    )
-                };
-                if let Some(reason) = implementation_integrity_violation_with_tool_executions(
-                    user_prompt,
-                    &final_output,
-                    &observed_tool_calls,
-                    &observed_tool_executions,
-                    enforce_implementation_integrity_guard,
-                ) {
-                    self.emit_event(
-                        &run_id,
-                        step as u32,
-                        EventKind::Error,
-                        serde_json::json!({
-                            "error": reason,
-                            "source": "implementation_integrity_guard"
-                        }),
-                    );
-                    self.emit_event(
-                        &run_id,
-                        step as u32,
-                        EventKind::RunEnd,
-                        serde_json::json!({"exit_reason":"planner_error"}),
-                    );
-                    return self.finalize_run_outcome(
-                        AgentOutcomeBuilderInput {
-                            run_id,
-                            started_at,
-                            exit_reason: AgentExitReason::PlannerError,
-                            final_output: String::new(),
-                            error: Some(reason),
-                            messages,
-                            tool_calls: observed_tool_calls,
-                            tool_decisions: observed_tool_decisions,
-                            final_prompt_size_chars: request_context_chars,
-                            compaction_report: last_compaction_report,
-                            hook_invocations,
-                            provider_retry_count,
-                            provider_error_count,
-                        },
-                        saw_token_usage,
-                        &total_token_usage,
-                        &taint_state,
-                    );
-                }
-                self.emit_event(
-                    &run_id,
-                    step as u32,
-                    EventKind::RunEnd,
-                    serde_json::json!({
-                        "exit_reason":"ok",
-                        "final_output": final_output,
-                        "error": serde_json::Value::Null
-                    }),
-                );
-                return self.finalize_run_outcome(
-                    AgentOutcomeBuilderInput {
-                        run_id,
-                        started_at,
-                        exit_reason: AgentExitReason::Ok,
-                        final_output,
-                        error: None,
-                        messages,
-                        tool_calls: observed_tool_calls,
-                        tool_decisions: observed_tool_decisions,
-                        final_prompt_size_chars: request_context_chars,
-                        compaction_report: last_compaction_report,
-                        hook_invocations,
-                        provider_retry_count,
-                        provider_error_count,
-                    },
-                    saw_token_usage,
-                    &total_token_usage,
-                    &taint_state,
-                );
             }
         }
 

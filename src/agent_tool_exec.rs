@@ -225,6 +225,7 @@ pub(crate) fn tool_result_error_code(content: &str) -> Option<ToolErrorCode> {
     }
 }
 
+#[allow(dead_code)]
 pub(crate) fn tool_result_changed_flag(content: &str) -> Option<bool> {
     let outer = serde_json::from_str::<serde_json::Value>(content).ok()?;
     let inner_raw = outer.get("content")?.as_str()?;
