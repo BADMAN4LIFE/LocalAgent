@@ -1921,6 +1921,36 @@ mod tests {
     }
 
     #[test]
+    fn run_end_uses_final_output_when_assistant_text_is_empty() {
+        let mut s = UiState::new(10);
+        s.apply_event(&Event::new(
+            "r1".to_string(),
+            1,
+            EventKind::ToolCallDetected,
+            serde_json::json!({"tool_call_id":"tc1","tool":"read_file","side_effects":"filesystem_read"}),
+        ));
+        s.apply_event(&Event::new(
+            "r1".to_string(),
+            1,
+            EventKind::ToolExecEnd,
+            serde_json::json!({"tool_call_id":"tc1","tool":"read_file","ok":true,"content":"ok"}),
+        ));
+        s.apply_event(&Event::new(
+            "r1".to_string(),
+            1,
+            EventKind::RunEnd,
+            serde_json::json!({
+                "exit_reason":"ok",
+                "final_output":"Applied requested file changes and verified: main.rs."
+            }),
+        ));
+        assert_eq!(s.tool_calls.len(), 2);
+        assert_eq!(s.tool_calls[1].tool_name, "apply_patch");
+        assert_eq!(s.tool_calls[1].status, "OK:verified");
+        assert_eq!(s.tool_calls[1].ok, Some(true));
+    }
+
+    #[test]
     fn run_end_synthesizes_verified_write_row_on_non_ok_exit_when_text_indicates_write() {
         let mut s = UiState::new(10);
         s.apply_event(&Event::new(

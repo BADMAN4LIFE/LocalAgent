@@ -818,11 +818,17 @@ Fallback when native tool calls are unavailable:\n\
     ) -> AgentOutcome {
         let run_id = input.run_id.clone();
         let exit_reason = input.exit_reason.as_str().to_string();
+        let final_output = input.final_output.clone();
+        let error = input.error.clone();
         self.emit_event(
             &run_id,
             step,
             EventKind::RunEnd,
-            serde_json::json!({"exit_reason": exit_reason}),
+            serde_json::json!({
+                "exit_reason": exit_reason,
+                "final_output": final_output,
+                "error": error
+            }),
         );
         self.finalize_run_outcome(input, saw_token_usage, total_token_usage, taint_state)
     }
@@ -2209,7 +2215,11 @@ Fallback when native tool calls are unavailable:\n\
                         &run_id,
                         step as u32,
                         EventKind::RunEnd,
-                        serde_json::json!({"exit_reason":"ok"}),
+                        serde_json::json!({
+                            "exit_reason":"ok",
+                            "final_output": final_output,
+                            "error": serde_json::Value::Null
+                        }),
                     );
                     return self.finalize_run_outcome(
                         AgentOutcomeBuilderInput {
@@ -4757,7 +4767,11 @@ Fallback when native tool calls are unavailable:\n\
                     &run_id,
                     step as u32,
                     EventKind::RunEnd,
-                    serde_json::json!({"exit_reason":"ok"}),
+                    serde_json::json!({
+                        "exit_reason":"ok",
+                        "final_output": final_output,
+                        "error": serde_json::Value::Null
+                    }),
                 );
                 return self.finalize_run_outcome(
                     AgentOutcomeBuilderInput {
