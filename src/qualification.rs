@@ -207,7 +207,9 @@ pub(crate) async fn qualify_or_enable_readonly_fallback<P: ModelProvider>(
         Ok(()) => Ok(None),
         Err(e) => {
             let msg = e.to_string();
-            if msg.contains("orchestrator qualification failed") {
+            if msg.contains("orchestrator qualification failed")
+                || msg.contains("orchestrator qualification provider call failed")
+            {
                 all_tools.retain(|t| t.side_effects != types::SideEffects::FilesystemWrite);
                 return Ok(Some(format!(
                     "orchestrator qualification failed for model '{worker_model}'; continuing in read-only fallback (write tools disabled): {msg}"
