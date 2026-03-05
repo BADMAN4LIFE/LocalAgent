@@ -517,6 +517,23 @@ impl UiState {
                 if row.short_result.trim().is_empty() {
                     row.short_result = format!("verified by runtime: {path}");
                 }
+            } else {
+                self.tool_calls.push(ToolRow {
+                    tool_call_id: format!("runtime-verify:{path}"),
+                    tool_name: "apply_patch".to_string(),
+                    side_effects: "filesystem_write".to_string(),
+                    decision: Some("allow".to_string()),
+                    decision_source: Some("runtime_post_write_verify".to_string()),
+                    reason_token: "-".to_string(),
+                    decision_reason: Some(
+                        "write inferred from runtime post-write verification".to_string(),
+                    ),
+                    status: "OK:verified".to_string(),
+                    running_since: None,
+                    running_for_ms: 0,
+                    ok: Some(true),
+                    short_result: format!("verified by runtime: {path}"),
+                });
             }
         }
         self.next_hint = if ok {
@@ -1821,6 +1838,33 @@ mod tests {
         ));
         assert_eq!(s.tool_calls[0].ok, Some(true));
         assert_eq!(s.tool_calls[0].status, "OK:verified");
+    }
+
+    #[test]
+    fn post_write_verify_success_creates_fallback_write_row_when_missing() {
+        let mut s = UiState::new(10);
+        s.apply_event(&Event::new(
+            "r1".to_string(),
+            1,
+            EventKind::ToolCallDetected,
+            serde_json::json!({"tool_call_id":"tc1","tool":"read_file","side_effects":"filesystem_read"}),
+        ));
+        s.apply_event(&Event::new(
+            "r1".to_string(),
+            1,
+            EventKind::ToolExecEnd,
+            serde_json::json!({"tool_call_id":"tc1","tool":"read_file","ok":true,"content":"ok"}),
+        ));
+        s.apply_event(&Event::new(
+            "r1".to_string(),
+            1,
+            EventKind::PostWriteVerifyEnd,
+            serde_json::json!({"path":"main.rs","ok":true,"status":"ok","elapsed_ms":1}),
+        ));
+        assert_eq!(s.tool_calls.len(), 2);
+        assert_eq!(s.tool_calls[1].tool_name, "apply_patch");
+        assert_eq!(s.tool_calls[1].status, "OK:verified");
+        assert_eq!(s.tool_calls[1].ok, Some(true));
     }
 
     #[test]
