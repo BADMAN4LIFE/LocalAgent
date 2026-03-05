@@ -291,13 +291,7 @@ impl UiState {
                 }
             }
         }
-        if exit_reason.as_deref() != Some("cancelled")
-            && !self.tool_calls.iter().any(|r| {
-                r.side_effects == "filesystem_write"
-                    || r.tool_name == "apply_patch"
-                    || r.tool_name == "write_file"
-            })
-        {
+        if exit_reason.as_deref() != Some("cancelled") {
             let final_output = ev
                 .data
                 .get("final_output")
@@ -312,22 +306,35 @@ impl UiState {
                 .to_ascii_lowercase()
                 .contains("applied requested file changes and verified")
             {
-                self.tool_calls.push(ToolRow {
-                    tool_call_id: "runtime-finalize:verified-write".to_string(),
-                    tool_name: "apply_patch".to_string(),
-                    side_effects: "filesystem_write".to_string(),
-                    decision: Some("allow".to_string()),
-                    decision_source: Some("runtime_finalize_fallback".to_string()),
-                    reason_token: "-".to_string(),
-                    decision_reason: Some(
-                        "write inferred from runtime finalize output".to_string(),
-                    ),
-                    status: "OK:verified".to_string(),
-                    running_since: None,
-                    running_for_ms: 0,
-                    ok: Some(true),
-                    short_result: "verified by runtime finalize".to_string(),
-                });
+                if let Some(row) = self.tool_calls.iter_mut().rev().find(|r| {
+                    r.side_effects == "filesystem_write"
+                        || r.tool_name == "apply_patch"
+                        || r.tool_name == "write_file"
+                }) {
+                    row.ok = Some(true);
+                    row.status = "OK:verified".to_string();
+                    row.reason_token = "-".to_string();
+                    if row.short_result.trim().is_empty() || row.short_result.contains("failed") {
+                        row.short_result = "verified by runtime finalize".to_string();
+                    }
+                } else {
+                    self.tool_calls.push(ToolRow {
+                        tool_call_id: "runtime-finalize:verified-write".to_string(),
+                        tool_name: "apply_patch".to_string(),
+                        side_effects: "filesystem_write".to_string(),
+                        decision: Some("allow".to_string()),
+                        decision_source: Some("runtime_finalize_fallback".to_string()),
+                        reason_token: "-".to_string(),
+                        decision_reason: Some(
+                            "write inferred from runtime finalize output".to_string(),
+                        ),
+                        status: "OK:verified".to_string(),
+                        running_since: None,
+                        running_for_ms: 0,
+                        ok: Some(true),
+                        short_result: "verified by runtime finalize".to_string(),
+                    });
+                }
             }
         }
         self.next_hint = "done".to_string();
@@ -1939,6 +1946,34 @@ mod tests {
         assert_eq!(s.tool_calls[1].tool_name, "apply_patch");
         assert_eq!(s.tool_calls[1].status, "OK:verified");
         assert_eq!(s.tool_calls[1].ok, Some(true));
+    }
+
+    #[test]
+    fn run_end_upgrades_latest_failed_write_row_when_text_indicates_verified_write() {
+        let mut s = UiState::new(10);
+        s.apply_event(&Event::new(
+            "r1".to_string(),
+            1,
+            EventKind::ToolCallDetected,
+            serde_json::json!({"tool_call_id":"tc1","name":"apply_patch","side_effects":"filesystem_write"}),
+        ));
+        s.apply_event(&Event::new(
+            "r1".to_string(),
+            1,
+            EventKind::ToolExecEnd,
+            serde_json::json!({"tool_call_id":"tc1","name":"apply_patch","ok":false,"content":"failed","failure_class":"E_NON_IDEMPOTENT"}),
+        ));
+        s.assistant_text = "Applied requested file changes and verified: main.rs.".to_string();
+        s.apply_event(&Event::new(
+            "r1".to_string(),
+            1,
+            EventKind::RunEnd,
+            serde_json::json!({"exit_reason":"ok"}),
+        ));
+        assert_eq!(s.tool_calls.len(), 1);
+        assert_eq!(s.tool_calls[0].tool_name, "apply_patch");
+        assert_eq!(s.tool_calls[0].status, "OK:verified");
+        assert_eq!(s.tool_calls[0].ok, Some(true));
     }
 
     #[test]
