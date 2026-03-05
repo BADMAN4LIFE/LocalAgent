@@ -51,6 +51,15 @@ pub fn maybe_compact(
     messages: &[Message],
     settings: &CompactionSettings,
 ) -> anyhow::Result<CompactionOutcome> {
+    #[cfg(test)]
+    if messages.iter().any(|m| {
+        m.content
+            .as_deref()
+            .is_some_and(|c| c == "__FORCE_COMPACTION_ERROR__")
+    }) {
+        return Err(anyhow::anyhow!("forced compaction error"));
+    }
+
     if settings.max_context_chars == 0 || matches!(settings.mode, CompactionMode::Off) {
         return Ok(CompactionOutcome {
             messages: messages.to_vec(),

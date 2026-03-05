@@ -183,8 +183,10 @@ fn validate_runtime_owned_http_timeouts(
     planner_strict_effective: bool,
     selected_task_profile: Option<&str>,
 ) -> anyhow::Result<()> {
-    let runtime_owned_mode =
-        planner_strict_effective || should_enable_implementation_guard(args, selected_task_profile);
+    let planner_strict_runtime_owned =
+        planner_strict_effective && matches!(args.mode, planner::RunMode::PlannerWorker);
+    let runtime_owned_mode = planner_strict_runtime_owned
+        || should_enable_implementation_guard(args, selected_task_profile);
     if !runtime_owned_mode {
         return Ok(());
     }
@@ -1379,11 +1381,14 @@ fn planner_strict_failure_outcome(
 #[cfg(test)]
 mod tests {
     use clap::Parser;
+    use tempfile::tempdir;
 
     use super::{
         maybe_append_implementation_guard_message, should_enable_implementation_guard,
         task_kind_enforces_implementation_guard,
     };
+    use crate::gate::ProviderKind;
+    use crate::providers::mock::MockProvider;
     use crate::types::{Message, Role};
 
     #[test]
@@ -1497,10 +1502,64 @@ mod tests {
 
     #[test]
     fn planner_strict_mode_rejects_zero_http_timeouts() {
-        let args = crate::RunArgs::parse_from(["localagent", "--agent-mode", "plan"]);
+        let args = crate::RunArgs::parse_from([
+            "localagent",
+            "--agent-mode",
+            "plan",
+            "--mode",
+            "planner-worker",
+        ]);
         let err =
             super::validate_runtime_owned_http_timeouts(&args, true, None).expect_err("must fail");
         assert!(err.to_string().contains("--http-timeout-ms must be > 0"));
+    }
+
+    #[tokio::test]
+    async fn run_agent_rejects_zero_http_timeouts_in_runtime_owned_mode() {
+        let tmp = tempdir().expect("tempdir");
+        let paths = crate::store::resolve_state_paths(tmp.path(), None, None, None, None);
+        let mut args = crate::RunArgs::parse_from(["localagent", "--agent-mode", "build"]);
+        args.workdir = tmp.path().to_path_buf();
+        let err = super::run_agent(
+            MockProvider::new(),
+            ProviderKind::Mock,
+            "mock://local",
+            "mock-model",
+            "say hi",
+            &args,
+            &paths,
+        )
+        .await
+        .expect_err("must fail for zero timeout in runtime-owned mode");
+        assert!(err.to_string().contains("--http-timeout-ms must be > 0"));
+    }
+
+    #[tokio::test]
+    async fn run_agent_allows_zero_http_timeouts_with_explicit_opt_out() {
+        let tmp = tempdir().expect("tempdir");
+        let paths = crate::store::resolve_state_paths(tmp.path(), None, None, None, None);
+        let mut args = crate::RunArgs::parse_from([
+            "localagent",
+            "--agent-mode",
+            "build",
+            "--disable-implementation-guard",
+        ]);
+        args.workdir = tmp.path().to_path_buf();
+        let out = super::run_agent(
+            MockProvider::new(),
+            ProviderKind::Mock,
+            "mock://local",
+            "mock-model",
+            "say hi",
+            &args,
+            &paths,
+        )
+        .await
+        .expect("opt-out should allow zero timeout");
+        assert!(matches!(
+            out.outcome.exit_reason,
+            crate::AgentExitReason::Ok
+        ));
     }
 }
 
