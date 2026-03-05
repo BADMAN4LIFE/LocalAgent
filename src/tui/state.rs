@@ -1002,18 +1002,37 @@ impl UiState {
         side_effects: String,
         status: &str,
     ) -> &mut ToolRow {
-        // Some providers reuse or omit tool_call_id. Avoid collapsing different
-        // tools into one row by using (tool_call_id, tool_name) identity when
-        // names are available on both sides.
-        if let Some(idx) = self.tool_calls.iter().position(|t| {
-            if t.tool_call_id != tool_call_id {
-                return false;
-            }
-            if tool_name.is_empty() || t.tool_name.is_empty() {
-                return true;
-            }
-            t.tool_name == tool_name
-        }) {
+        // Some providers reuse or omit tool_call_id. Match the most recent
+        // compatible row instead of the first id match to avoid cross-tool
+        // collapse when ids are recycled.
+        if let Some(idx) = self
+            .tool_calls
+            .iter()
+            .enumerate()
+            .rev()
+            .find_map(|(idx, t)| {
+                if t.tool_call_id != tool_call_id {
+                    return None;
+                }
+                if !tool_name.is_empty() && !t.tool_name.is_empty() && t.tool_name != tool_name {
+                    return None;
+                }
+                // For nameless updates, prefer in-flight rows and avoid mutating
+                // already-completed rows from earlier tools that reused the id.
+                if tool_name.is_empty()
+                    && !matches!(t.status.as_str(), "detected" | "decided" | "running")
+                {
+                    return None;
+                }
+                if !side_effects.is_empty()
+                    && !t.side_effects.is_empty()
+                    && t.side_effects != side_effects
+                {
+                    return None;
+                }
+                Some(idx)
+            })
+        {
             let row = &mut self.tool_calls[idx];
             row.status = status.to_string();
             if status == "running" && row.running_since.is_none() {
@@ -1347,6 +1366,41 @@ mod tests {
             1,
             EventKind::ToolExecEnd,
             serde_json::json!({"tool_call_id":"shared","name":"apply_patch","ok":true,"content":"ok"}),
+        ));
+
+        assert_eq!(s.tool_calls.len(), 2);
+        assert_eq!(s.tool_calls[0].tool_name, "read_file");
+        assert_eq!(s.tool_calls[1].tool_name, "apply_patch");
+        assert_eq!(s.tool_calls[0].status, "OK:tool");
+        assert_eq!(s.tool_calls[1].status, "OK:tool");
+    }
+
+    #[test]
+    fn nameless_exec_end_with_reused_id_updates_latest_inflight_tool() {
+        let mut s = UiState::new(10);
+        s.apply_event(&Event::new(
+            "r1".to_string(),
+            1,
+            EventKind::ToolCallDetected,
+            serde_json::json!({"tool_call_id":"shared","name":"read_file","side_effects":"filesystem_read"}),
+        ));
+        s.apply_event(&Event::new(
+            "r1".to_string(),
+            1,
+            EventKind::ToolExecEnd,
+            serde_json::json!({"tool_call_id":"shared","name":"read_file","ok":true,"content":"ok"}),
+        ));
+        s.apply_event(&Event::new(
+            "r1".to_string(),
+            1,
+            EventKind::ToolCallDetected,
+            serde_json::json!({"tool_call_id":"shared","name":"apply_patch","side_effects":"filesystem_write"}),
+        ));
+        s.apply_event(&Event::new(
+            "r1".to_string(),
+            1,
+            EventKind::ToolExecEnd,
+            serde_json::json!({"tool_call_id":"shared","ok":true,"content":"ok"}),
         ));
 
         assert_eq!(s.tool_calls.len(), 2);
