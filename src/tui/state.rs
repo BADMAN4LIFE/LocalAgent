@@ -205,12 +205,7 @@ impl UiState {
             .and_then(|v| v.as_str())
             .unwrap_or_default()
             .to_string();
-        let name = ev
-            .data
-            .get("name")
-            .and_then(|v| v.as_str())
-            .unwrap_or_default()
-            .to_string();
+        let name = event_tool_name(&ev.data).to_string();
         let side = ev
             .data
             .get("side_effects")
@@ -344,12 +339,7 @@ impl UiState {
             .and_then(|v| v.as_str())
             .unwrap_or_default()
             .to_string();
-        let name = ev
-            .data
-            .get("name")
-            .and_then(|v| v.as_str())
-            .unwrap_or_default()
-            .to_string();
+        let name = event_tool_name(&ev.data).to_string();
         let side = ev
             .data
             .get("side_effects")
@@ -418,12 +408,7 @@ impl UiState {
             .and_then(|v| v.as_str())
             .unwrap_or_default()
             .to_string();
-        let name = ev
-            .data
-            .get("name")
-            .and_then(|v| v.as_str())
-            .unwrap_or_default()
-            .to_string();
+        let name = event_tool_name(&ev.data).to_string();
         let side = ev
             .data
             .get("side_effects")
@@ -431,12 +416,7 @@ impl UiState {
             .unwrap_or_default()
             .to_string();
         let _ = self.upsert_tool(id, name, side, "running");
-        if is_mcp_tool(
-            ev.data
-                .get("name")
-                .and_then(|v| v.as_str())
-                .unwrap_or_default(),
-        ) {
+        if is_mcp_tool(event_tool_name(&ev.data)) {
             self.mcp_lifecycle = "RUNNING".to_string();
             self.mcp_running_for_ms = 0;
             self.mcp_stalled = false;
@@ -451,12 +431,7 @@ impl UiState {
             .and_then(|v| v.as_str())
             .unwrap_or_default()
             .to_string();
-        let name = ev
-            .data
-            .get("name")
-            .and_then(|v| v.as_str())
-            .unwrap_or_default()
-            .to_string();
+        let name = event_tool_name(&ev.data).to_string();
         let ok = ev.data.get("ok").and_then(|v| v.as_bool());
         let result = ev
             .data
@@ -490,23 +465,13 @@ impl UiState {
         if matches!(ok, Some(true)) {
             self.bump_usage(&side_effects);
             self.next_hint = "continue".to_string();
-            if is_mcp_tool(
-                ev.data
-                    .get("name")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or_default(),
-            ) {
+            if is_mcp_tool(event_tool_name(&ev.data)) {
                 self.mcp_lifecycle = "DONE".to_string();
                 self.mcp_running_for_ms = 0;
                 self.mcp_stalled = false;
                 self.mcp_stall_notice_emitted = false;
             }
-        } else if is_mcp_tool(
-            ev.data
-                .get("name")
-                .and_then(|v| v.as_str())
-                .unwrap_or_default(),
-        ) {
+        } else if is_mcp_tool(event_tool_name(&ev.data)) {
             self.mcp_lifecycle = "FAIL".to_string();
             self.mcp_running_for_ms = 0;
             self.mcp_stalled = false;
@@ -1140,6 +1105,13 @@ fn class_to_reason_token(class: &str) -> &'static str {
     }
 }
 
+fn event_tool_name(data: &serde_json::Value) -> &str {
+    data.get("name")
+        .and_then(|v| v.as_str())
+        .or_else(|| data.get("tool").and_then(|v| v.as_str()))
+        .unwrap_or_default()
+}
+
 fn short_hash(s: &str) -> String {
     if s.is_empty() {
         "-".to_string()
@@ -1373,6 +1345,38 @@ mod tests {
         assert_eq!(s.tool_calls[1].tool_name, "apply_patch");
         assert_eq!(s.tool_calls[0].status, "OK:tool");
         assert_eq!(s.tool_calls[1].status, "OK:tool");
+    }
+
+    #[test]
+    fn projected_tool_key_populates_tool_rows() {
+        let mut s = UiState::new(10);
+        s.apply_event(&Event::new(
+            "r1".to_string(),
+            1,
+            EventKind::ToolCallDetected,
+            serde_json::json!({"tool_call_id":"tc1","tool":"read_file","side_effects":"filesystem_read"}),
+        ));
+        s.apply_event(&Event::new(
+            "r1".to_string(),
+            1,
+            EventKind::ToolExecEnd,
+            serde_json::json!({"tool_call_id":"tc1","tool":"read_file","ok":true,"content":"ok"}),
+        ));
+        s.apply_event(&Event::new(
+            "r1".to_string(),
+            2,
+            EventKind::ToolCallDetected,
+            serde_json::json!({"tool_call_id":"tc2","tool":"apply_patch","side_effects":"filesystem_write"}),
+        ));
+        s.apply_event(&Event::new(
+            "r1".to_string(),
+            2,
+            EventKind::ToolExecEnd,
+            serde_json::json!({"tool_call_id":"tc2","tool":"apply_patch","ok":true,"content":"ok"}),
+        ));
+        assert_eq!(s.tool_calls.len(), 2);
+        assert_eq!(s.tool_calls[0].tool_name, "read_file");
+        assert_eq!(s.tool_calls[1].tool_name, "apply_patch");
     }
 
     #[test]
