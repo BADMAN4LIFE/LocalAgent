@@ -1953,7 +1953,6 @@ Fallback when native tool calls are unavailable:\n\
                     );
                 }
                 RuntimeCompletionDecision::FinalizeOk => {
-                    blocked_runtime_completion_count = 0;
                     let (queue_delivered, queue_interrupted) = self
                         .deliver_operator_queue_at_boundary(
                             &run_id,
@@ -1968,7 +1967,7 @@ Fallback when native tool calls are unavailable:\n\
                         if !matches!(self.plan_tool_enforcement, PlanToolEnforcementMode::Off)
                             && !self.plan_step_constraints.is_empty()
                         {
-                            last_user_output.unwrap_or_default()
+                            last_user_output.clone().unwrap_or_default()
                         } else {
                             assistant.content.unwrap_or_default()
                         };
@@ -2131,6 +2130,45 @@ Fallback when native tool calls are unavailable:\n\
                         &observed_tool_executions,
                         enforce_implementation_integrity_guard,
                     ) {
+                        let saw_write_attempt = observed_tool_executions
+                            .iter()
+                            .any(|e| matches!(e.name.as_str(), "apply_patch" | "write_file"));
+                        if !saw_write_attempt
+                            && reason.contains("without an effective write")
+                            && blocked_runtime_completion_count < 2
+                        {
+                            blocked_runtime_completion_count =
+                                blocked_runtime_completion_count.saturating_add(1);
+                            let corrective_instruction = "Implementation task requires at least one effective write tool call. Use read_file + apply_patch (or write_file when creating a new file), then verify with read_file before finalizing.";
+                            self.emit_event(
+                                &run_id,
+                                step as u32,
+                                EventKind::Error,
+                                serde_json::json!({
+                                    "error": corrective_instruction,
+                                    "source": "implementation_integrity_guard",
+                                    "reason_code": "implementation_requires_effective_write",
+                                    "blocked_count": blocked_runtime_completion_count
+                                }),
+                            );
+                            self.emit_event(
+                                &run_id,
+                                step as u32,
+                                EventKind::StepBlocked,
+                                serde_json::json!({
+                                    "reason": "implementation_requires_effective_write",
+                                    "blocked_count": blocked_runtime_completion_count
+                                }),
+                            );
+                            messages.push(Message {
+                                role: Role::Developer,
+                                content: Some(corrective_instruction.to_string()),
+                                tool_call_id: None,
+                                tool_name: None,
+                                tool_calls: None,
+                            });
+                            continue 'agent_steps;
+                        }
                         self.emit_event(
                             &run_id,
                             step as u32,
