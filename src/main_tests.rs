@@ -997,6 +997,8 @@ fn default_run_args() -> super::RunArgs {
 
         task_kind: None,
 
+        disable_implementation_guard: false,
+
         taint: crate::taint::TaintToggle::Off,
 
         taint_mode: crate::taint::TaintMode::Propagate,

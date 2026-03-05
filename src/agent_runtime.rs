@@ -152,6 +152,32 @@ fn task_kind_enforces_implementation_guard(
     task_kind.is_some_and(is_coding_like) || selected_task_profile.is_some_and(is_coding_like)
 }
 
+fn should_enable_implementation_guard(args: &RunArgs, selected_task_profile: Option<&str>) -> bool {
+    if args.disable_implementation_guard {
+        return false;
+    }
+    if matches!(args.agent_mode, crate::AgentMode::Build) {
+        return true;
+    }
+    task_kind_enforces_implementation_guard(args.task_kind.as_deref(), selected_task_profile)
+}
+
+fn maybe_append_implementation_guard_message(
+    base_instruction_messages: &mut Vec<Message>,
+    args: &RunArgs,
+    selected_task_profile: Option<&str>,
+) {
+    if should_enable_implementation_guard(args, selected_task_profile) {
+        base_instruction_messages.push(Message {
+            role: Role::System,
+            content: Some(agent::INTERNAL_ENFORCE_IMPLEMENTATION_GUARD_FLAG.to_string()),
+            tool_call_id: None,
+            tool_name: None,
+            tool_calls: None,
+        });
+    }
+}
+
 struct ReproSnapshotBuildInput<'a> {
     args: &'a RunArgs,
     provider_kind: ProviderKind,
@@ -775,18 +801,11 @@ pub(crate) async fn run_agent_with_ui<P: ModelProvider>(
     };
 
     let mut base_instruction_messages = instruction_resolution.messages.clone();
-    if task_kind_enforces_implementation_guard(
-        args.task_kind.as_deref(),
+    maybe_append_implementation_guard_message(
+        &mut base_instruction_messages,
+        args,
         instruction_resolution.selected_task_profile.as_deref(),
-    ) {
-        base_instruction_messages.push(Message {
-            role: Role::System,
-            content: Some(agent::INTERNAL_ENFORCE_IMPLEMENTATION_GUARD_FLAG.to_string()),
-            tool_call_id: None,
-            tool_name: None,
-            tool_calls: None,
-        });
-    }
+    );
     let project_guidance_message = project_guidance_resolution
         .as_ref()
         .and_then(project_guidance::project_guidance_message);
@@ -1326,6 +1345,92 @@ fn planner_strict_failure_outcome(
         provider_error_count: 0,
         token_usage: None,
         taint: None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use clap::Parser;
+
+    use super::{
+        maybe_append_implementation_guard_message, should_enable_implementation_guard,
+        task_kind_enforces_implementation_guard,
+    };
+    use crate::types::{Message, Role};
+
+    #[test]
+    fn build_mode_enables_implementation_guard_by_default() {
+        let args = crate::RunArgs::parse_from(["localagent", "--agent-mode", "build"]);
+        assert!(should_enable_implementation_guard(&args, None));
+    }
+
+    #[test]
+    fn coding_task_kind_enables_implementation_guard_in_plan_mode() {
+        let args = crate::RunArgs::parse_from([
+            "localagent",
+            "--agent-mode",
+            "plan",
+            "--task-kind",
+            "coding",
+        ]);
+        assert!(task_kind_enforces_implementation_guard(
+            args.task_kind.as_deref(),
+            None
+        ));
+        assert!(should_enable_implementation_guard(&args, None));
+    }
+
+    #[test]
+    fn explicit_opt_out_disables_implementation_guard() {
+        let args = crate::RunArgs::parse_from([
+            "localagent",
+            "--agent-mode",
+            "build",
+            "--disable-implementation-guard",
+        ]);
+        assert!(!should_enable_implementation_guard(&args, Some("coding")));
+    }
+
+    #[test]
+    fn guard_message_is_injected_only_when_enabled() {
+        let mut enabled_msgs = vec![Message {
+            role: Role::System,
+            content: Some("base".to_string()),
+            tool_call_id: None,
+            tool_name: None,
+            tool_calls: None,
+        }];
+        let enabled_args = crate::RunArgs::parse_from(["localagent", "--agent-mode", "build"]);
+        maybe_append_implementation_guard_message(&mut enabled_msgs, &enabled_args, None);
+        assert!(enabled_msgs.iter().any(|m| {
+            m.content
+                .as_deref()
+                .is_some_and(|c| c == crate::agent::INTERNAL_ENFORCE_IMPLEMENTATION_GUARD_FLAG)
+        }));
+
+        let mut disabled_msgs = vec![Message {
+            role: Role::System,
+            content: Some("base".to_string()),
+            tool_call_id: None,
+            tool_name: None,
+            tool_calls: None,
+        }];
+        let disabled_args = crate::RunArgs::parse_from([
+            "localagent",
+            "--agent-mode",
+            "build",
+            "--disable-implementation-guard",
+        ]);
+        maybe_append_implementation_guard_message(
+            &mut disabled_msgs,
+            &disabled_args,
+            Some("coding"),
+        );
+        assert!(!disabled_msgs.iter().any(|m| {
+            m.content
+                .as_deref()
+                .is_some_and(|c| c == crate::agent::INTERNAL_ENFORCE_IMPLEMENTATION_GUARD_FLAG)
+        }));
     }
 }
 

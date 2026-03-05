@@ -1169,6 +1169,13 @@ pub(crate) struct RunArgs {
     #[arg(long)]
     pub(crate) task_kind: Option<String>,
 
+    #[arg(
+        long,
+        default_value_t = false,
+        help = "Disable automatic implementation integrity guard injection (intended for explicit eval/manual bypass cases)"
+    )]
+    pub(crate) disable_implementation_guard: bool,
+
     #[arg(long, value_enum, default_value_t = TaintToggle::Off)]
     pub(crate) taint: TaintToggle,
 
