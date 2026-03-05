@@ -13,8 +13,8 @@ use crate::agent_tool_exec::ToolRunOutcome;
 use crate::agent_tool_exec::{
     classify_tool_failure, contains_tool_wrapper_markers, extract_content_tool_calls,
     infer_truncated_flag, is_apply_patch_invalid_format_error, make_invalid_args_tool_message,
-    run_tool_once, schema_repair_instruction_message, tool_result_error_code,
-    tool_result_has_error,
+    run_tool_once, schema_repair_instruction_message, tool_result_changed_flag,
+    tool_result_error_code, tool_result_has_error,
 };
 use crate::agent_utils::{add_opt_u32, provider_name, sha256_hex};
 use crate::agent_worker_protocol::parse_worker_step_status;
@@ -2079,6 +2079,7 @@ Fallback when native tool calls are unavailable:\n\
                                 name: "read_file".to_string(),
                                 path: Some(path.clone()),
                                 ok: verify.ok,
+                                changed: None,
                             });
                             if !verify.ok {
                                 let reason = format!(
@@ -3994,6 +3995,11 @@ Fallback when native tool calls are unavailable:\n\
                             name: tc.name.clone(),
                             path: normalized_tool_path_from_args(tc),
                             ok: final_ok,
+                            changed: if tc.name == "apply_patch" {
+                                tool_result_changed_flag(&content)
+                            } else {
+                                None
+                            },
                         });
                         let final_failure_class = if tool_result_has_error(&content) {
                             Some(classify_tool_failure(
@@ -4614,6 +4620,7 @@ Fallback when native tool calls are unavailable:\n\
                         name: "read_file".to_string(),
                         path: Some(path.clone()),
                         ok: verify.ok,
+                        changed: None,
                     });
                     if !verify.ok {
                         let reason = format!(

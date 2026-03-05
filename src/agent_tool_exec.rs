@@ -225,6 +225,13 @@ pub(crate) fn tool_result_error_code(content: &str) -> Option<ToolErrorCode> {
     }
 }
 
+pub(crate) fn tool_result_changed_flag(content: &str) -> Option<bool> {
+    let outer = serde_json::from_str::<serde_json::Value>(content).ok()?;
+    let inner_raw = outer.get("content")?.as_str()?;
+    let inner = serde_json::from_str::<serde_json::Value>(inner_raw).ok()?;
+    inner.get("changed").and_then(|v| v.as_bool())
+}
+
 pub(crate) fn infer_truncated_flag(content: &str) -> bool {
     match serde_json::from_str::<serde_json::Value>(content) {
         Ok(v) => v
@@ -415,6 +422,7 @@ pub(crate) fn find_json_bounds(s: &str) -> Option<(usize, usize)> {
 #[cfg(test)]
 mod tests {
     use super::is_apply_patch_invalid_format_error;
+    use super::tool_result_changed_flag;
     use crate::types::ToolCall;
     use serde_json::json;
 
@@ -446,5 +454,16 @@ mod tests {
         })
         .to_string();
         assert!(!is_apply_patch_invalid_format_error(&tc, &raw));
+    }
+
+    #[test]
+    fn tool_result_changed_flag_reads_inner_content_changed() {
+        let raw = serde_json::json!({
+            "schema_version": "openagent.tool_result.v1",
+            "ok": true,
+            "content": "{\"path\":\"main.rs\",\"changed\":false,\"bytes_written\":36}"
+        })
+        .to_string();
+        assert_eq!(tool_result_changed_flag(&raw), Some(false));
     }
 }

@@ -5,6 +5,7 @@ pub(crate) struct ToolExecutionRecord {
     pub name: String,
     pub path: Option<String>,
     pub ok: bool,
+    pub changed: Option<bool>,
 }
 
 #[cfg(test)]
@@ -23,6 +24,7 @@ pub(crate) fn implementation_integrity_violation(
                 .and_then(|v| v.as_str())
                 .map(normalize_tool_path),
             ok: true,
+            changed: None,
         })
         .collect::<Vec<_>>();
     implementation_integrity_violation_with_tool_executions(
@@ -54,10 +56,19 @@ pub(crate) fn implementation_integrity_violation_with_tool_executions(
             "implementation guard: final answer contains placeholder artifacts instead of concrete implementation".to_string(),
         );
     }
+    let mut saw_effective_write = false;
+    let mut saw_write_attempt = false;
     let mut successful_read_paths = std::collections::BTreeSet::<String>::new();
     let mut pending_post_write_verification = std::collections::BTreeSet::<String>::new();
     let allow_new_file_without_read = prompt_allows_new_file_without_read(user_prompt);
     for execution in tool_executions {
+        if matches!(execution.name.as_str(), "apply_patch" | "write_file") {
+            saw_write_attempt = true;
+            if execution.ok && (execution.name == "write_file" || execution.changed.unwrap_or(true))
+            {
+                saw_effective_write = true;
+            }
+        }
         if !execution.ok {
             continue;
         }
@@ -90,6 +101,11 @@ pub(crate) fn implementation_integrity_violation_with_tool_executions(
             }
             _ => {}
         }
+    }
+    if (saw_write_attempt || prompt_requires_effective_write(user_prompt)) && !saw_effective_write {
+        return Some(
+            "implementation guard: file-edit task finalized without an effective write (writes failed or apply_patch changed:false)".to_string(),
+        );
     }
     if let Some(path) = pending_post_write_verification.iter().next() {
         return Some(format!(
@@ -151,6 +167,16 @@ fn prompt_allows_new_file_without_read(prompt: &str) -> bool {
         || p.contains("create new file")
         || p.contains("new file at")
         || p.contains("add new file")
+}
+
+fn prompt_requires_effective_write(prompt: &str) -> bool {
+    let p = prompt.to_ascii_lowercase();
+    p.contains("apply_patch")
+        || p.contains("write_file")
+        || p.contains("edit ")
+        || p.contains("modify ")
+        || p.contains("update ")
+        || p.contains("change ")
 }
 
 fn output_has_placeholder_artifacts(text: &str) -> bool {
