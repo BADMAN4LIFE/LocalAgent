@@ -1468,7 +1468,15 @@ mod tests {
 
     #[test]
     fn runtime_owned_mode_rejects_zero_http_timeouts() {
-        let args = crate::RunArgs::parse_from(["localagent", "--agent-mode", "build"]);
+        let args = crate::RunArgs::parse_from([
+            "localagent",
+            "--agent-mode",
+            "build",
+            "--http-timeout-ms",
+            "0",
+            "--http-stream-idle-timeout-ms",
+            "0",
+        ]);
         let err =
             super::validate_runtime_owned_http_timeouts(&args, false, None).expect_err("must fail");
         assert!(err.to_string().contains("--http-timeout-ms must be > 0"));
@@ -1495,6 +1503,10 @@ mod tests {
             "--agent-mode",
             "build",
             "--disable-implementation-guard",
+            "--http-timeout-ms",
+            "0",
+            "--http-stream-idle-timeout-ms",
+            "0",
         ]);
         super::validate_runtime_owned_http_timeouts(&args, false, None)
             .expect("opt-out allows non-strict zero timeout");
@@ -1508,6 +1520,10 @@ mod tests {
             "plan",
             "--mode",
             "planner-worker",
+            "--http-timeout-ms",
+            "0",
+            "--http-stream-idle-timeout-ms",
+            "0",
         ]);
         let err =
             super::validate_runtime_owned_http_timeouts(&args, true, None).expect_err("must fail");
@@ -1519,6 +1535,8 @@ mod tests {
         let tmp = tempdir().expect("tempdir");
         let paths = crate::store::resolve_state_paths(tmp.path(), None, None, None, None);
         let mut args = crate::RunArgs::parse_from(["localagent", "--agent-mode", "build"]);
+        args.http_timeout_ms = 0;
+        args.http_stream_idle_timeout_ms = 0;
         args.workdir = tmp.path().to_path_buf();
         let err = super::run_agent(
             MockProvider::new(),
@@ -1544,6 +1562,8 @@ mod tests {
             "build",
             "--disable-implementation-guard",
         ]);
+        args.http_timeout_ms = 0;
+        args.http_stream_idle_timeout_ms = 0;
         args.workdir = tmp.path().to_path_buf();
         let out = super::run_agent(
             MockProvider::new(),

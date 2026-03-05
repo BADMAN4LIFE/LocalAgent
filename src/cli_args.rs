@@ -919,13 +919,13 @@ pub(crate) struct EvalArgs {
     #[arg(long, default_value_t = 2)]
     pub(crate) http_max_retries: u32,
 
-    #[arg(long, default_value_t = 0)]
+    #[arg(long, default_value_t = 120_000)]
     pub(crate) http_timeout_ms: u64,
 
     #[arg(long, default_value_t = 2_000)]
     pub(crate) http_connect_timeout_ms: u64,
 
-    #[arg(long, default_value_t = 0)]
+    #[arg(long, default_value_t = 30_000)]
     pub(crate) http_stream_idle_timeout_ms: u64,
 
     #[arg(long, default_value_t = 10_000_000)]
@@ -1209,13 +1209,13 @@ pub(crate) struct RunArgs {
     #[arg(long, default_value_t = 2)]
     pub(crate) http_max_retries: u32,
 
-    #[arg(long, default_value_t = 0)]
+    #[arg(long, default_value_t = 120_000)]
     pub(crate) http_timeout_ms: u64,
 
     #[arg(long, default_value_t = 2_000)]
     pub(crate) http_connect_timeout_ms: u64,
 
-    #[arg(long, default_value_t = 0)]
+    #[arg(long, default_value_t = 30_000)]
     pub(crate) http_stream_idle_timeout_ms: u64,
 
     #[arg(long, default_value_t = 10_000_000)]
