@@ -221,6 +221,17 @@ impl UiState {
     }
 
     fn apply_run_start_event(&mut self, ev: &Event) {
+        self.tool_calls.clear();
+        self.assistant_text.clear();
+        self.exit_reason = None;
+        self.total_tool_execs = 0;
+        self.filesystem_read_execs = 0;
+        self.filesystem_write_execs = 0;
+        self.shell_execs = 0;
+        self.network_execs = 0;
+        self.browser_execs = 0;
+        self.last_failure_class = "-".to_string();
+        self.last_tool_retry_count = 0;
         self.model = ev
             .data
             .get("model")
@@ -241,6 +252,7 @@ impl UiState {
         self.mcp_stalled = false;
         self.mcp_stall_notice_emitted = false;
         self.cancel_lifecycle = "NONE".to_string();
+        self.next_hint = "running".to_string();
     }
 
     fn apply_run_end_event(&mut self, ev: &Event) {
@@ -1244,6 +1256,42 @@ mod tests {
         assert_eq!(s.tool_calls[0].short_result, "abc");
         assert_eq!(s.total_tool_execs, 1);
         assert_eq!(s.filesystem_read_execs, 1);
+    }
+
+    #[test]
+    fn run_start_resets_tool_rows_and_per_run_counters() {
+        let mut s = UiState::new(10);
+        s.apply_event(&Event::new(
+            "r1".to_string(),
+            1,
+            EventKind::ToolCallDetected,
+            serde_json::json!({"tool_call_id":"tc_old","name":"apply_patch","side_effects":"filesystem_write"}),
+        ));
+        s.apply_event(&Event::new(
+            "r1".to_string(),
+            1,
+            EventKind::ToolExecEnd,
+            serde_json::json!({"tool_call_id":"tc_old","name":"apply_patch","ok":false,"content":"failed","failure_class":"E_NON_IDEMPOTENT"}),
+        ));
+        assert_eq!(s.tool_calls.len(), 1);
+        assert_eq!(s.total_tool_execs, 0);
+        assert_eq!(s.filesystem_write_execs, 0);
+
+        s.apply_event(&Event::new(
+            "r2".to_string(),
+            0,
+            EventKind::RunStart,
+            serde_json::json!({"model":"m"}),
+        ));
+        assert!(s.tool_calls.is_empty());
+        assert_eq!(s.total_tool_execs, 0);
+        assert_eq!(s.filesystem_read_execs, 0);
+        assert_eq!(s.filesystem_write_execs, 0);
+        assert_eq!(s.shell_execs, 0);
+        assert_eq!(s.network_execs, 0);
+        assert_eq!(s.browser_execs, 0);
+        assert_eq!(s.last_failure_class, "-");
+        assert_eq!(s.next_hint, "running");
     }
 
     #[test]
