@@ -923,34 +923,26 @@ Fallback when native tool calls are unavailable:\n\
                                 serde_json::json!({"exit_reason":"hook_aborted"}),
                             );
                             let prompt_chars = context_size_chars(&messages);
-                            return AgentOutcome {
-                                run_id,
-                                started_at,
-                                finished_at: crate::trust::now_rfc3339(),
-                                exit_reason: AgentExitReason::HookAborted,
-                                final_output: reason.clone(),
-                                error: Some(reason),
-                                messages,
-                                tool_calls: observed_tool_calls,
-                                tool_decisions: observed_tool_decisions,
-                                compaction_settings: self.compaction_settings.clone(),
-                                final_prompt_size_chars: prompt_chars,
-                                compaction_report: last_compaction_report,
-                                hook_invocations,
-                                provider_retry_count,
-                                provider_error_count,
-                                token_usage: if saw_token_usage {
-                                    Some(total_token_usage.clone())
-                                } else {
-                                    None
+                            return self.finalize_run_outcome(
+                                AgentOutcomeBuilderInput {
+                                    run_id,
+                                    started_at,
+                                    exit_reason: AgentExitReason::HookAborted,
+                                    final_output: reason.clone(),
+                                    error: Some(reason),
+                                    messages,
+                                    tool_calls: observed_tool_calls,
+                                    tool_decisions: observed_tool_decisions,
+                                    final_prompt_size_chars: prompt_chars,
+                                    compaction_report: last_compaction_report,
+                                    hook_invocations,
+                                    provider_retry_count,
+                                    provider_error_count,
                                 },
-                                taint: taint_record_from_state(
-                                    self.taint_toggle,
-                                    self.taint_mode,
-                                    self.taint_digest_bytes,
-                                    &taint_state,
-                                ),
-                            };
+                                saw_token_usage,
+                                &total_token_usage,
+                                &taint_state,
+                            );
                         }
                         if !result.append_messages.is_empty() {
                             messages.extend(result.append_messages);
@@ -1132,34 +1124,26 @@ Fallback when native tool calls are unavailable:\n\
                         EventKind::RunEnd,
                         serde_json::json!({"exit_reason":"provider_error"}),
                     );
-                    return AgentOutcome {
-                        run_id,
-                        started_at,
-                        finished_at: crate::trust::now_rfc3339(),
-                        exit_reason: AgentExitReason::ProviderError,
-                        final_output: String::new(),
-                        error: Some(e.to_string()),
-                        messages,
-                        tool_calls: observed_tool_calls,
-                        tool_decisions: observed_tool_decisions,
-                        compaction_settings: self.compaction_settings.clone(),
-                        final_prompt_size_chars: request_context_chars,
-                        compaction_report: last_compaction_report,
-                        hook_invocations,
-                        provider_retry_count,
-                        provider_error_count,
-                        token_usage: if saw_token_usage {
-                            Some(total_token_usage.clone())
-                        } else {
-                            None
+                    return self.finalize_run_outcome(
+                        AgentOutcomeBuilderInput {
+                            run_id,
+                            started_at,
+                            exit_reason: AgentExitReason::ProviderError,
+                            final_output: String::new(),
+                            error: Some(e.to_string()),
+                            messages,
+                            tool_calls: observed_tool_calls,
+                            tool_decisions: observed_tool_decisions,
+                            final_prompt_size_chars: request_context_chars,
+                            compaction_report: last_compaction_report,
+                            hook_invocations,
+                            provider_retry_count,
+                            provider_error_count,
                         },
-                        taint: taint_record_from_state(
-                            self.taint_toggle,
-                            self.taint_mode,
-                            self.taint_digest_bytes,
-                            &taint_state,
-                        ),
-                    };
+                        saw_token_usage,
+                        &total_token_usage,
+                        &taint_state,
+                    );
                 }
             };
             if resp.tool_calls.is_empty() {
@@ -1193,34 +1177,26 @@ Fallback when native tool calls are unavailable:\n\
                             EventKind::RunEnd,
                             serde_json::json!({"exit_reason":"planner_error"}),
                         );
-                        return AgentOutcome {
-                            run_id,
-                            started_at,
-                            finished_at: crate::trust::now_rfc3339(),
-                            exit_reason: AgentExitReason::PlannerError,
-                            final_output: reason.clone(),
-                            error: Some(reason),
-                            messages,
-                            tool_calls: observed_tool_calls,
-                            tool_decisions: observed_tool_decisions,
-                            compaction_settings: self.compaction_settings.clone(),
-                            final_prompt_size_chars: request_context_chars,
-                            compaction_report: last_compaction_report,
-                            hook_invocations,
-                            provider_retry_count,
-                            provider_error_count,
-                            token_usage: if saw_token_usage {
-                                Some(total_token_usage.clone())
-                            } else {
-                                None
+                        return self.finalize_run_outcome(
+                            AgentOutcomeBuilderInput {
+                                run_id,
+                                started_at,
+                                exit_reason: AgentExitReason::PlannerError,
+                                final_output: reason.clone(),
+                                error: Some(reason),
+                                messages,
+                                tool_calls: observed_tool_calls,
+                                tool_decisions: observed_tool_decisions,
+                                final_prompt_size_chars: request_context_chars,
+                                compaction_report: last_compaction_report,
+                                hook_invocations,
+                                provider_retry_count,
+                                provider_error_count,
                             },
-                            taint: taint_record_from_state(
-                                self.taint_toggle,
-                                self.taint_mode,
-                                self.taint_digest_bytes,
-                                &taint_state,
-                            ),
-                        };
+                            saw_token_usage,
+                            &total_token_usage,
+                            &taint_state,
+                        );
                     }
                 }
             }
@@ -1261,34 +1237,26 @@ Fallback when native tool calls are unavailable:\n\
                     EventKind::RunEnd,
                     serde_json::json!({"exit_reason":"planner_error"}),
                 );
-                return AgentOutcome {
-                    run_id,
-                    started_at,
-                    finished_at: crate::trust::now_rfc3339(),
-                    exit_reason: AgentExitReason::PlannerError,
-                    final_output: reason.clone(),
-                    error: Some(reason),
-                    messages,
-                    tool_calls: observed_tool_calls,
-                    tool_decisions: observed_tool_decisions,
-                    compaction_settings: self.compaction_settings.clone(),
-                    final_prompt_size_chars: request_context_chars,
-                    compaction_report: last_compaction_report,
-                    hook_invocations,
-                    provider_retry_count,
-                    provider_error_count,
-                    token_usage: if saw_token_usage {
-                        Some(total_token_usage.clone())
-                    } else {
-                        None
+                return self.finalize_run_outcome(
+                    AgentOutcomeBuilderInput {
+                        run_id,
+                        started_at,
+                        exit_reason: AgentExitReason::PlannerError,
+                        final_output: reason.clone(),
+                        error: Some(reason),
+                        messages,
+                        tool_calls: observed_tool_calls,
+                        tool_decisions: observed_tool_decisions,
+                        final_prompt_size_chars: request_context_chars,
+                        compaction_report: last_compaction_report,
+                        hook_invocations,
+                        provider_retry_count,
+                        provider_error_count,
                     },
-                    taint: taint_record_from_state(
-                        self.taint_toggle,
-                        self.taint_mode,
-                        self.taint_digest_bytes,
-                        &taint_state,
-                    ),
-                };
+                    saw_token_usage,
+                    &total_token_usage,
+                    &taint_state,
+                );
             }
             if tool_only_phase_active
                 && resp.tool_calls.is_empty()
@@ -1328,34 +1296,26 @@ Fallback when native tool calls are unavailable:\n\
                         EventKind::RunEnd,
                         serde_json::json!({"exit_reason":"planner_error"}),
                     );
-                    return AgentOutcome {
-                        run_id,
-                        started_at,
-                        finished_at: crate::trust::now_rfc3339(),
-                        exit_reason: AgentExitReason::PlannerError,
-                        final_output: reason.clone(),
-                        error: Some(reason),
-                        messages,
-                        tool_calls: observed_tool_calls,
-                        tool_decisions: observed_tool_decisions,
-                        compaction_settings: self.compaction_settings.clone(),
-                        final_prompt_size_chars: request_context_chars,
-                        compaction_report: last_compaction_report,
-                        hook_invocations,
-                        provider_retry_count,
-                        provider_error_count,
-                        token_usage: if saw_token_usage {
-                            Some(total_token_usage.clone())
-                        } else {
-                            None
+                    return self.finalize_run_outcome(
+                        AgentOutcomeBuilderInput {
+                            run_id,
+                            started_at,
+                            exit_reason: AgentExitReason::PlannerError,
+                            final_output: reason.clone(),
+                            error: Some(reason),
+                            messages,
+                            tool_calls: observed_tool_calls,
+                            tool_decisions: observed_tool_decisions,
+                            final_prompt_size_chars: request_context_chars,
+                            compaction_report: last_compaction_report,
+                            hook_invocations,
+                            provider_retry_count,
+                            provider_error_count,
                         },
-                        taint: taint_record_from_state(
-                            self.taint_toggle,
-                            self.taint_mode,
-                            self.taint_digest_bytes,
-                            &taint_state,
-                        ),
-                    };
+                        saw_token_usage,
+                        &total_token_usage,
+                        &taint_state,
+                    );
                 }
                 messages.push(resp.assistant.clone());
                 messages.push(Message {
@@ -1412,37 +1372,29 @@ Fallback when native tool calls are unavailable:\n\
                         EventKind::RunEnd,
                         serde_json::json!({"exit_reason":"planner_error"}),
                     );
-                    return AgentOutcome {
-                        run_id,
-                        started_at,
-                        finished_at: crate::trust::now_rfc3339(),
-                        exit_reason: AgentExitReason::PlannerError,
-                        final_output: String::new(),
-                        error: Some(
-                            "worker response missing control envelope for planner-enforced mode"
-                                .to_string(),
-                        ),
-                        messages,
-                        tool_calls: observed_tool_calls,
-                        tool_decisions: observed_tool_decisions,
-                        compaction_settings: self.compaction_settings.clone(),
-                        final_prompt_size_chars: request_context_chars,
-                        compaction_report: last_compaction_report,
-                        hook_invocations,
-                        provider_retry_count,
-                        provider_error_count,
-                        token_usage: if saw_token_usage {
-                            Some(total_token_usage.clone())
-                        } else {
-                            None
+                    return self.finalize_run_outcome(
+                        AgentOutcomeBuilderInput {
+                            run_id,
+                            started_at,
+                            exit_reason: AgentExitReason::PlannerError,
+                            final_output: String::new(),
+                            error: Some(
+                                "worker response missing control envelope for planner-enforced mode"
+                                    .to_string(),
+                            ),
+                            messages,
+                            tool_calls: observed_tool_calls,
+                            tool_decisions: observed_tool_decisions,
+                            final_prompt_size_chars: request_context_chars,
+                            compaction_report: last_compaction_report,
+                            hook_invocations,
+                            provider_retry_count,
+                            provider_error_count,
                         },
-                        taint: taint_record_from_state(
-                            self.taint_toggle,
-                            self.taint_mode,
-                            self.taint_digest_bytes,
-                            &taint_state,
-                        ),
-                    };
+                        saw_token_usage,
+                        &total_token_usage,
+                        &taint_state,
+                    );
                 }
                 messages.push(Message {
                     role: Role::Developer,
@@ -1487,37 +1439,29 @@ Fallback when native tool calls are unavailable:\n\
                                 EventKind::RunEnd,
                                 serde_json::json!({"exit_reason":"planner_error"}),
                             );
-                            return AgentOutcome {
-                                run_id,
-                                started_at,
-                                finished_at: crate::trust::now_rfc3339(),
-                                exit_reason: AgentExitReason::PlannerError,
-                                final_output: String::new(),
-                                error: Some(format!(
-                                    "invalid step completion transition: got done for {}, expected {}",
-                                    step_status.step_id, current_step_id
-                                )),
-                                messages,
-                                tool_calls: observed_tool_calls,
-                                tool_decisions: observed_tool_decisions,
-                                compaction_settings: self.compaction_settings.clone(),
-                                final_prompt_size_chars: request_context_chars,
-                                compaction_report: last_compaction_report,
-                                hook_invocations,
-                                provider_retry_count,
-                                provider_error_count,
-                                token_usage: if saw_token_usage {
-                                    Some(total_token_usage.clone())
-                                } else {
-                                    None
+                            return self.finalize_run_outcome(
+                                AgentOutcomeBuilderInput {
+                                    run_id,
+                                    started_at,
+                                    exit_reason: AgentExitReason::PlannerError,
+                                    final_output: String::new(),
+                                    error: Some(format!(
+                                        "invalid step completion transition: got done for {}, expected {}",
+                                        step_status.step_id, current_step_id
+                                    )),
+                                    messages,
+                                    tool_calls: observed_tool_calls,
+                                    tool_decisions: observed_tool_decisions,
+                                    final_prompt_size_chars: request_context_chars,
+                                    compaction_report: last_compaction_report,
+                                    hook_invocations,
+                                    provider_retry_count,
+                                    provider_error_count,
                                 },
-                                taint: taint_record_from_state(
-                                    self.taint_toggle,
-                                    self.taint_mode,
-                                    self.taint_digest_bytes,
-                                    &taint_state,
-                                ),
-                            };
+                                saw_token_usage,
+                                &total_token_usage,
+                                &taint_state,
+                            );
                         }
                         self.emit_event(
                             &run_id,
@@ -1557,37 +1501,29 @@ Fallback when native tool calls are unavailable:\n\
                                     EventKind::RunEnd,
                                     serde_json::json!({"exit_reason":"planner_error"}),
                                 );
-                                return AgentOutcome {
-                                    run_id,
-                                    started_at,
-                                    finished_at: crate::trust::now_rfc3339(),
-                                    exit_reason: AgentExitReason::PlannerError,
-                                    final_output: String::new(),
-                                    error: Some(format!(
-                                        "invalid next_step_id in worker status: {}",
-                                        next
-                                    )),
-                                    messages,
-                                    tool_calls: observed_tool_calls,
-                                    tool_decisions: observed_tool_decisions,
-                                    compaction_settings: self.compaction_settings.clone(),
-                                    final_prompt_size_chars: request_context_chars,
-                                    compaction_report: last_compaction_report,
-                                    hook_invocations,
-                                    provider_retry_count,
-                                    provider_error_count,
-                                    token_usage: if saw_token_usage {
-                                        Some(total_token_usage.clone())
-                                    } else {
-                                        None
+                                return self.finalize_run_outcome(
+                                    AgentOutcomeBuilderInput {
+                                        run_id,
+                                        started_at,
+                                        exit_reason: AgentExitReason::PlannerError,
+                                        final_output: String::new(),
+                                        error: Some(format!(
+                                            "invalid next_step_id in worker status: {}",
+                                            next
+                                        )),
+                                        messages,
+                                        tool_calls: observed_tool_calls,
+                                        tool_decisions: observed_tool_decisions,
+                                        final_prompt_size_chars: request_context_chars,
+                                        compaction_report: last_compaction_report,
+                                        hook_invocations,
+                                        provider_retry_count,
+                                        provider_error_count,
                                     },
-                                    taint: taint_record_from_state(
-                                        self.taint_toggle,
-                                        self.taint_mode,
-                                        self.taint_digest_bytes,
-                                        &taint_state,
-                                    ),
-                                };
+                                    saw_token_usage,
+                                    &total_token_usage,
+                                    &taint_state,
+                                );
                             }
                         } else if active_plan_step_idx < self.plan_step_constraints.len() {
                             active_plan_step_idx = active_plan_step_idx.saturating_add(1);
@@ -1611,37 +1547,29 @@ Fallback when native tool calls are unavailable:\n\
                                 EventKind::RunEnd,
                                 serde_json::json!({"exit_reason":"planner_error"}),
                             );
-                            return AgentOutcome {
-                                run_id,
-                                started_at,
-                                finished_at: crate::trust::now_rfc3339(),
-                                exit_reason: AgentExitReason::PlannerError,
-                                final_output: String::new(),
-                                error: Some(format!(
-                                    "invalid retry transition: got retry for {}, expected {}",
-                                    step_status.step_id, current_step_id
-                                )),
-                                messages,
-                                tool_calls: observed_tool_calls,
-                                tool_decisions: observed_tool_decisions,
-                                compaction_settings: self.compaction_settings.clone(),
-                                final_prompt_size_chars: request_context_chars,
-                                compaction_report: last_compaction_report,
-                                hook_invocations,
-                                provider_retry_count,
-                                provider_error_count,
-                                token_usage: if saw_token_usage {
-                                    Some(total_token_usage.clone())
-                                } else {
-                                    None
+                            return self.finalize_run_outcome(
+                                AgentOutcomeBuilderInput {
+                                    run_id,
+                                    started_at,
+                                    exit_reason: AgentExitReason::PlannerError,
+                                    final_output: String::new(),
+                                    error: Some(format!(
+                                        "invalid retry transition: got retry for {}, expected {}",
+                                        step_status.step_id, current_step_id
+                                    )),
+                                    messages,
+                                    tool_calls: observed_tool_calls,
+                                    tool_decisions: observed_tool_decisions,
+                                    final_prompt_size_chars: request_context_chars,
+                                    compaction_report: last_compaction_report,
+                                    hook_invocations,
+                                    provider_retry_count,
+                                    provider_error_count,
                                 },
-                                taint: taint_record_from_state(
-                                    self.taint_toggle,
-                                    self.taint_mode,
-                                    self.taint_digest_bytes,
-                                    &taint_state,
-                                ),
-                            };
+                                saw_token_usage,
+                                &total_token_usage,
+                                &taint_state,
+                            );
                         }
                         let entry = step_retry_counts
                             .entry(step_status.step_id.clone())
@@ -1664,37 +1592,29 @@ Fallback when native tool calls are unavailable:\n\
                                 EventKind::RunEnd,
                                 serde_json::json!({"exit_reason":"planner_error"}),
                             );
-                            return AgentOutcome {
-                                run_id,
-                                started_at,
-                                finished_at: crate::trust::now_rfc3339(),
-                                exit_reason: AgentExitReason::PlannerError,
-                                final_output: String::new(),
-                                error: Some(format!(
-                                    "step {} exceeded retry transition limit",
-                                    step_status.step_id
-                                )),
-                                messages,
-                                tool_calls: observed_tool_calls,
-                                tool_decisions: observed_tool_decisions,
-                                compaction_settings: self.compaction_settings.clone(),
-                                final_prompt_size_chars: request_context_chars,
-                                compaction_report: last_compaction_report,
-                                hook_invocations,
-                                provider_retry_count,
-                                provider_error_count,
-                                token_usage: if saw_token_usage {
-                                    Some(total_token_usage.clone())
-                                } else {
-                                    None
+                            return self.finalize_run_outcome(
+                                AgentOutcomeBuilderInput {
+                                    run_id,
+                                    started_at,
+                                    exit_reason: AgentExitReason::PlannerError,
+                                    final_output: String::new(),
+                                    error: Some(format!(
+                                        "step {} exceeded retry transition limit",
+                                        step_status.step_id
+                                    )),
+                                    messages,
+                                    tool_calls: observed_tool_calls,
+                                    tool_decisions: observed_tool_decisions,
+                                    final_prompt_size_chars: request_context_chars,
+                                    compaction_report: last_compaction_report,
+                                    hook_invocations,
+                                    provider_retry_count,
+                                    provider_error_count,
                                 },
-                                taint: taint_record_from_state(
-                                    self.taint_toggle,
-                                    self.taint_mode,
-                                    self.taint_digest_bytes,
-                                    &taint_state,
-                                ),
-                            };
+                                saw_token_usage,
+                                &total_token_usage,
+                                &taint_state,
+                            );
                         }
                     }
                     "replan" => {
@@ -1713,37 +1633,29 @@ Fallback when native tool calls are unavailable:\n\
                             EventKind::RunEnd,
                             serde_json::json!({"exit_reason":"planner_error"}),
                         );
-                        return AgentOutcome {
-                            run_id,
-                            started_at,
-                            finished_at: crate::trust::now_rfc3339(),
-                            exit_reason: AgentExitReason::PlannerError,
-                            final_output: String::new(),
-                            error: Some(format!(
-                                "worker requested {} transition for step {}",
-                                step_status.status, step_status.step_id
-                            )),
-                            messages,
-                            tool_calls: observed_tool_calls,
-                            tool_decisions: observed_tool_decisions,
-                            compaction_settings: self.compaction_settings.clone(),
-                            final_prompt_size_chars: request_context_chars,
-                            compaction_report: last_compaction_report,
-                            hook_invocations,
-                            provider_retry_count,
-                            provider_error_count,
-                            token_usage: if saw_token_usage {
-                                Some(total_token_usage.clone())
-                            } else {
-                                None
+                        return self.finalize_run_outcome(
+                            AgentOutcomeBuilderInput {
+                                run_id,
+                                started_at,
+                                exit_reason: AgentExitReason::PlannerError,
+                                final_output: String::new(),
+                                error: Some(format!(
+                                    "worker requested {} transition for step {}",
+                                    step_status.status, step_status.step_id
+                                )),
+                                messages,
+                                tool_calls: observed_tool_calls,
+                                tool_decisions: observed_tool_decisions,
+                                final_prompt_size_chars: request_context_chars,
+                                compaction_report: last_compaction_report,
+                                hook_invocations,
+                                provider_retry_count,
+                                provider_error_count,
                             },
-                            taint: taint_record_from_state(
-                                self.taint_toggle,
-                                self.taint_mode,
-                                self.taint_digest_bytes,
-                                &taint_state,
-                            ),
-                        };
+                            saw_token_usage,
+                            &total_token_usage,
+                            &taint_state,
+                        );
                     }
                     "fail" => {
                         self.emit_event(
@@ -1761,37 +1673,29 @@ Fallback when native tool calls are unavailable:\n\
                             EventKind::RunEnd,
                             serde_json::json!({"exit_reason":"planner_error"}),
                         );
-                        return AgentOutcome {
-                            run_id,
-                            started_at,
-                            finished_at: crate::trust::now_rfc3339(),
-                            exit_reason: AgentExitReason::PlannerError,
-                            final_output: String::new(),
-                            error: Some(format!(
-                                "worker requested {} transition for step {}",
-                                step_status.status, step_status.step_id
-                            )),
-                            messages,
-                            tool_calls: observed_tool_calls,
-                            tool_decisions: observed_tool_decisions,
-                            compaction_settings: self.compaction_settings.clone(),
-                            final_prompt_size_chars: request_context_chars,
-                            compaction_report: last_compaction_report,
-                            hook_invocations,
-                            provider_retry_count,
-                            provider_error_count,
-                            token_usage: if saw_token_usage {
-                                Some(total_token_usage.clone())
-                            } else {
-                                None
+                        return self.finalize_run_outcome(
+                            AgentOutcomeBuilderInput {
+                                run_id,
+                                started_at,
+                                exit_reason: AgentExitReason::PlannerError,
+                                final_output: String::new(),
+                                error: Some(format!(
+                                    "worker requested {} transition for step {}",
+                                    step_status.status, step_status.step_id
+                                )),
+                                messages,
+                                tool_calls: observed_tool_calls,
+                                tool_decisions: observed_tool_decisions,
+                                final_prompt_size_chars: request_context_chars,
+                                compaction_report: last_compaction_report,
+                                hook_invocations,
+                                provider_retry_count,
+                                provider_error_count,
                             },
-                            taint: taint_record_from_state(
-                                self.taint_toggle,
-                                self.taint_mode,
-                                self.taint_digest_bytes,
-                                &taint_state,
-                            ),
-                        };
+                            saw_token_usage,
+                            &total_token_usage,
+                            &taint_state,
+                        );
                     }
                     _ => {}
                 }
@@ -1846,34 +1750,26 @@ Fallback when native tool calls are unavailable:\n\
                             EventKind::RunEnd,
                             serde_json::json!({"exit_reason":"planner_error"}),
                         );
-                        return AgentOutcome {
-                            run_id,
-                            started_at,
-                            finished_at: crate::trust::now_rfc3339(),
-                            exit_reason: AgentExitReason::PlannerError,
-                            final_output: String::new(),
-                            error: Some("model repeatedly attempted to halt before completing required planner steps".to_string()),
-                            messages,
-                            tool_calls: observed_tool_calls,
-                            tool_decisions: observed_tool_decisions,
-                            compaction_settings: self.compaction_settings.clone(),
-                            final_prompt_size_chars: request_context_chars,
-                            compaction_report: last_compaction_report,
-                            hook_invocations,
-                            provider_retry_count,
-                            provider_error_count,
-                            token_usage: if saw_token_usage {
-                                Some(total_token_usage.clone())
-                            } else {
-                                None
+                        return self.finalize_run_outcome(
+                            AgentOutcomeBuilderInput {
+                                run_id,
+                                started_at,
+                                exit_reason: AgentExitReason::PlannerError,
+                                final_output: String::new(),
+                                error: Some("model repeatedly attempted to halt before completing required planner steps".to_string()),
+                                messages,
+                                tool_calls: observed_tool_calls,
+                                tool_decisions: observed_tool_decisions,
+                                final_prompt_size_chars: request_context_chars,
+                                compaction_report: last_compaction_report,
+                                hook_invocations,
+                                provider_retry_count,
+                                provider_error_count,
                             },
-                            taint: taint_record_from_state(
-                                self.taint_toggle,
-                                self.taint_mode,
-                                self.taint_digest_bytes,
-                                &taint_state,
-                            ),
-                        };
+                            saw_token_usage,
+                            &total_token_usage,
+                            &taint_state,
+                        );
                     }
                     messages.push(Message {
                         role: Role::Developer,
@@ -1949,34 +1845,26 @@ Fallback when native tool calls are unavailable:\n\
                                     EventKind::RunEnd,
                                     serde_json::json!({"exit_reason":"planner_error"}),
                                 );
-                                return AgentOutcome {
-                                    run_id,
-                                    started_at,
-                                    finished_at: crate::trust::now_rfc3339(),
-                                    exit_reason: AgentExitReason::PlannerError,
-                                    final_output: String::new(),
-                                    error: Some(reason),
-                                    messages,
-                                    tool_calls: observed_tool_calls,
-                                    tool_decisions: observed_tool_decisions,
-                                    compaction_settings: self.compaction_settings.clone(),
-                                    final_prompt_size_chars: request_context_chars,
-                                    compaction_report: last_compaction_report,
-                                    hook_invocations,
-                                    provider_retry_count,
-                                    provider_error_count,
-                                    token_usage: if saw_token_usage {
-                                        Some(total_token_usage.clone())
-                                    } else {
-                                        None
+                                return self.finalize_run_outcome(
+                                    AgentOutcomeBuilderInput {
+                                        run_id,
+                                        started_at,
+                                        exit_reason: AgentExitReason::PlannerError,
+                                        final_output: String::new(),
+                                        error: Some(reason),
+                                        messages,
+                                        tool_calls: observed_tool_calls,
+                                        tool_decisions: observed_tool_decisions,
+                                        final_prompt_size_chars: request_context_chars,
+                                        compaction_report: last_compaction_report,
+                                        hook_invocations,
+                                        provider_retry_count,
+                                        provider_error_count,
                                     },
-                                    taint: taint_record_from_state(
-                                        self.taint_toggle,
-                                        self.taint_mode,
-                                        self.taint_digest_bytes,
-                                        &taint_state,
-                                    ),
-                                };
+                                    saw_token_usage,
+                                    &total_token_usage,
+                                    &taint_state,
+                                );
                             }
                         }
                     }
@@ -2002,34 +1890,26 @@ Fallback when native tool calls are unavailable:\n\
                             EventKind::RunEnd,
                             serde_json::json!({"exit_reason":"planner_error"}),
                         );
-                        return AgentOutcome {
-                            run_id,
-                            started_at,
-                            finished_at: crate::trust::now_rfc3339(),
-                            exit_reason: AgentExitReason::PlannerError,
-                            final_output: String::new(),
-                            error: Some(reason),
-                            messages,
-                            tool_calls: observed_tool_calls,
-                            tool_decisions: observed_tool_decisions,
-                            compaction_settings: self.compaction_settings.clone(),
-                            final_prompt_size_chars: request_context_chars,
-                            compaction_report: last_compaction_report,
-                            hook_invocations,
-                            provider_retry_count,
-                            provider_error_count,
-                            token_usage: if saw_token_usage {
-                                Some(total_token_usage.clone())
-                            } else {
-                                None
+                        return self.finalize_run_outcome(
+                            AgentOutcomeBuilderInput {
+                                run_id,
+                                started_at,
+                                exit_reason: AgentExitReason::PlannerError,
+                                final_output: String::new(),
+                                error: Some(reason),
+                                messages,
+                                tool_calls: observed_tool_calls,
+                                tool_decisions: observed_tool_decisions,
+                                final_prompt_size_chars: request_context_chars,
+                                compaction_report: last_compaction_report,
+                                hook_invocations,
+                                provider_retry_count,
+                                provider_error_count,
                             },
-                            taint: taint_record_from_state(
-                                self.taint_toggle,
-                                self.taint_mode,
-                                self.taint_digest_bytes,
-                                &taint_state,
-                            ),
-                        };
+                            saw_token_usage,
+                            &total_token_usage,
+                            &taint_state,
+                        );
                     }
                     self.emit_event(
                         &run_id,
@@ -2037,34 +1917,26 @@ Fallback when native tool calls are unavailable:\n\
                         EventKind::RunEnd,
                         serde_json::json!({"exit_reason":"ok"}),
                     );
-                    return AgentOutcome {
-                        run_id,
-                        started_at,
-                        finished_at: crate::trust::now_rfc3339(),
-                        exit_reason: AgentExitReason::Ok,
-                        final_output,
-                        error: None,
-                        messages,
-                        tool_calls: observed_tool_calls,
-                        tool_decisions: observed_tool_decisions,
-                        compaction_settings: self.compaction_settings.clone(),
-                        final_prompt_size_chars: request_context_chars,
-                        compaction_report: last_compaction_report,
-                        hook_invocations,
-                        provider_retry_count,
-                        provider_error_count,
-                        token_usage: if saw_token_usage {
-                            Some(total_token_usage.clone())
-                        } else {
-                            None
+                    return self.finalize_run_outcome(
+                        AgentOutcomeBuilderInput {
+                            run_id,
+                            started_at,
+                            exit_reason: AgentExitReason::Ok,
+                            final_output,
+                            error: None,
+                            messages,
+                            tool_calls: observed_tool_calls,
+                            tool_decisions: observed_tool_decisions,
+                            final_prompt_size_chars: request_context_chars,
+                            compaction_report: last_compaction_report,
+                            hook_invocations,
+                            provider_retry_count,
+                            provider_error_count,
                         },
-                        taint: taint_record_from_state(
-                            self.taint_toggle,
-                            self.taint_mode,
-                            self.taint_digest_bytes,
-                            &taint_state,
-                        ),
-                    };
+                        saw_token_usage,
+                        &total_token_usage,
+                        &taint_state,
+                    );
                 }
                 StepCompletionDecision::ExecuteTools => {}
             }
@@ -2185,34 +2057,26 @@ Fallback when native tool calls are unavailable:\n\
                                             EventKind::RunEnd,
                                             serde_json::json!({"exit_reason":"denied"}),
                                         );
-                                        return AgentOutcome {
-                                            run_id,
-                                            started_at,
-                                            finished_at: crate::trust::now_rfc3339(),
-                                            exit_reason: AgentExitReason::Denied,
-                                            final_output: reason.clone(),
-                                            error: Some(reason),
-                                            messages,
-                                            tool_calls: observed_tool_calls,
-                                            tool_decisions: observed_tool_decisions,
-                                            compaction_settings: self.compaction_settings.clone(),
-                                            final_prompt_size_chars: request_context_chars,
-                                            compaction_report: last_compaction_report,
-                                            hook_invocations,
-                                            provider_retry_count,
-                                            provider_error_count,
-                                            token_usage: if saw_token_usage {
-                                                Some(total_token_usage.clone())
-                                            } else {
-                                                None
+                                        return self.finalize_run_outcome(
+                                            AgentOutcomeBuilderInput {
+                                                run_id,
+                                                started_at,
+                                                exit_reason: AgentExitReason::Denied,
+                                                final_output: reason.clone(),
+                                                error: Some(reason),
+                                                messages,
+                                                tool_calls: observed_tool_calls,
+                                                tool_decisions: observed_tool_decisions,
+                                                final_prompt_size_chars: request_context_chars,
+                                                compaction_report: last_compaction_report,
+                                                hook_invocations,
+                                                provider_retry_count,
+                                                provider_error_count,
                                             },
-                                            taint: taint_record_from_state(
-                                                self.taint_toggle,
-                                                self.taint_mode,
-                                                self.taint_digest_bytes,
-                                                &taint_state,
-                                            ),
-                                        };
+                                            saw_token_usage,
+                                            &total_token_usage,
+                                            &taint_state,
+                                        );
                                     }
                                     observed_tool_decisions.push(ToolDecisionRecord {
                                         step: step as u32,
@@ -2307,34 +2171,26 @@ Fallback when native tool calls are unavailable:\n\
                                         EventKind::RunEnd,
                                         serde_json::json!({"exit_reason":"denied"}),
                                     );
-                                    return AgentOutcome {
-                                        run_id,
-                                        started_at,
-                                        finished_at: crate::trust::now_rfc3339(),
-                                        exit_reason: AgentExitReason::Denied,
-                                        final_output: reason.clone(),
-                                        error: Some(reason),
-                                        messages,
-                                        tool_calls: observed_tool_calls,
-                                        tool_decisions: observed_tool_decisions,
-                                        compaction_settings: self.compaction_settings.clone(),
-                                        final_prompt_size_chars: request_context_chars,
-                                        compaction_report: last_compaction_report,
-                                        hook_invocations,
-                                        provider_retry_count,
-                                        provider_error_count,
-                                        token_usage: if saw_token_usage {
-                                            Some(total_token_usage.clone())
-                                        } else {
-                                            None
+                                    return self.finalize_run_outcome(
+                                        AgentOutcomeBuilderInput {
+                                            run_id,
+                                            started_at,
+                                            exit_reason: AgentExitReason::Denied,
+                                            final_output: reason.clone(),
+                                            error: Some(reason),
+                                            messages,
+                                            tool_calls: observed_tool_calls,
+                                            tool_decisions: observed_tool_decisions,
+                                            final_prompt_size_chars: request_context_chars,
+                                            compaction_report: last_compaction_report,
+                                            hook_invocations,
+                                            provider_retry_count,
+                                            provider_error_count,
                                         },
-                                        taint: taint_record_from_state(
-                                            self.taint_toggle,
-                                            self.taint_mode,
-                                            self.taint_digest_bytes,
-                                            &taint_state,
-                                        ),
-                                    };
+                                        saw_token_usage,
+                                        &total_token_usage,
+                                        &taint_state,
+                                    );
                                 }
                                 observed_tool_decisions.push(ToolDecisionRecord {
                                     step: step as u32,
@@ -2433,34 +2289,26 @@ Fallback when native tool calls are unavailable:\n\
                                             EventKind::RunEnd,
                                             serde_json::json!({"exit_reason":"denied"}),
                                         );
-                                        return AgentOutcome {
-                                            run_id,
-                                            started_at,
-                                            finished_at: crate::trust::now_rfc3339(),
-                                            exit_reason: AgentExitReason::Denied,
-                                            final_output: reason.clone(),
-                                            error: Some(reason),
-                                            messages,
-                                            tool_calls: observed_tool_calls,
-                                            tool_decisions: observed_tool_decisions,
-                                            compaction_settings: self.compaction_settings.clone(),
-                                            final_prompt_size_chars: request_context_chars,
-                                            compaction_report: last_compaction_report,
-                                            hook_invocations,
-                                            provider_retry_count,
-                                            provider_error_count,
-                                            token_usage: if saw_token_usage {
-                                                Some(total_token_usage.clone())
-                                            } else {
-                                                None
+                                        return self.finalize_run_outcome(
+                                            AgentOutcomeBuilderInput {
+                                                run_id,
+                                                started_at,
+                                                exit_reason: AgentExitReason::Denied,
+                                                final_output: reason.clone(),
+                                                error: Some(reason),
+                                                messages,
+                                                tool_calls: observed_tool_calls,
+                                                tool_decisions: observed_tool_decisions,
+                                                final_prompt_size_chars: request_context_chars,
+                                                compaction_report: last_compaction_report,
+                                                hook_invocations,
+                                                provider_retry_count,
+                                                provider_error_count,
                                             },
-                                            taint: taint_record_from_state(
-                                                self.taint_toggle,
-                                                self.taint_mode,
-                                                self.taint_digest_bytes,
-                                                &taint_state,
-                                            ),
-                                        };
+                                            saw_token_usage,
+                                            &total_token_usage,
+                                            &taint_state,
+                                        );
                                     }
                                     observed_tool_decisions.push(ToolDecisionRecord {
                                         step: step as u32,
@@ -2551,34 +2399,26 @@ Fallback when native tool calls are unavailable:\n\
                                         EventKind::RunEnd,
                                         serde_json::json!({"exit_reason":"denied"}),
                                     );
-                                    return AgentOutcome {
-                                        run_id,
-                                        started_at,
-                                        finished_at: crate::trust::now_rfc3339(),
-                                        exit_reason: AgentExitReason::Denied,
-                                        final_output: reason.clone(),
-                                        error: Some(reason),
-                                        messages,
-                                        tool_calls: observed_tool_calls,
-                                        tool_decisions: observed_tool_decisions,
-                                        compaction_settings: self.compaction_settings.clone(),
-                                        final_prompt_size_chars: request_context_chars,
-                                        compaction_report: last_compaction_report,
-                                        hook_invocations,
-                                        provider_retry_count,
-                                        provider_error_count,
-                                        token_usage: if saw_token_usage {
-                                            Some(total_token_usage.clone())
-                                        } else {
-                                            None
+                                    return self.finalize_run_outcome(
+                                        AgentOutcomeBuilderInput {
+                                            run_id,
+                                            started_at,
+                                            exit_reason: AgentExitReason::Denied,
+                                            final_output: reason.clone(),
+                                            error: Some(reason),
+                                            messages,
+                                            tool_calls: observed_tool_calls,
+                                            tool_decisions: observed_tool_decisions,
+                                            final_prompt_size_chars: request_context_chars,
+                                            compaction_report: last_compaction_report,
+                                            hook_invocations,
+                                            provider_retry_count,
+                                            provider_error_count,
                                         },
-                                        taint: taint_record_from_state(
-                                            self.taint_toggle,
-                                            self.taint_mode,
-                                            self.taint_digest_bytes,
-                                            &taint_state,
-                                        ),
-                                    };
+                                        saw_token_usage,
+                                        &total_token_usage,
+                                        &taint_state,
+                                    );
                                 }
                                 observed_tool_decisions.push(ToolDecisionRecord {
                                     step: step as u32,
@@ -2720,34 +2560,26 @@ Fallback when native tool calls are unavailable:\n\
                             EventKind::RunEnd,
                             serde_json::json!({"exit_reason":"planner_error"}),
                         );
-                        return AgentOutcome {
-                            run_id,
-                            started_at,
-                            finished_at: crate::trust::now_rfc3339(),
-                            exit_reason: AgentExitReason::PlannerError,
-                            final_output: reason.clone(),
-                            error: Some(reason),
-                            messages,
-                            tool_calls: observed_tool_calls,
-                            tool_decisions: observed_tool_decisions,
-                            compaction_settings: self.compaction_settings.clone(),
-                            final_prompt_size_chars: request_context_chars,
-                            compaction_report: last_compaction_report,
-                            hook_invocations,
-                            provider_retry_count,
-                            provider_error_count,
-                            token_usage: if saw_token_usage {
-                                Some(total_token_usage.clone())
-                            } else {
-                                None
+                        return self.finalize_run_outcome(
+                            AgentOutcomeBuilderInput {
+                                run_id,
+                                started_at,
+                                exit_reason: AgentExitReason::PlannerError,
+                                final_output: reason.clone(),
+                                error: Some(reason),
+                                messages,
+                                tool_calls: observed_tool_calls,
+                                tool_decisions: observed_tool_decisions,
+                                final_prompt_size_chars: request_context_chars,
+                                compaction_report: last_compaction_report,
+                                hook_invocations,
+                                provider_retry_count,
+                                provider_error_count,
                             },
-                            taint: taint_record_from_state(
-                                self.taint_toggle,
-                                self.taint_mode,
-                                self.taint_digest_bytes,
-                                &taint_state,
-                            ),
-                        };
+                            saw_token_usage,
+                            &total_token_usage,
+                            &taint_state,
+                        );
                     }
                     let repair_key = format!("{}|{}", tc.name, err);
                     let attempts = schema_repair_attempts
@@ -3008,34 +2840,26 @@ Fallback when native tool calls are unavailable:\n\
                                 EventKind::RunEnd,
                                 serde_json::json!({"exit_reason":"denied"}),
                             );
-                            return AgentOutcome {
-                                run_id,
-                                started_at,
-                                finished_at: crate::trust::now_rfc3339(),
-                                exit_reason: AgentExitReason::Denied,
-                                final_output: reason,
-                                error: None,
-                                messages,
-                                tool_calls: observed_tool_calls,
-                                tool_decisions: observed_tool_decisions,
-                                compaction_settings: self.compaction_settings.clone(),
-                                final_prompt_size_chars: request_context_chars,
-                                compaction_report: last_compaction_report,
-                                hook_invocations,
-                                provider_retry_count,
-                                provider_error_count,
-                                token_usage: if saw_token_usage {
-                                    Some(total_token_usage.clone())
-                                } else {
-                                    None
+                            return self.finalize_run_outcome(
+                                AgentOutcomeBuilderInput {
+                                    run_id,
+                                    started_at,
+                                    exit_reason: AgentExitReason::Denied,
+                                    final_output: reason,
+                                    error: None,
+                                    messages,
+                                    tool_calls: observed_tool_calls,
+                                    tool_decisions: observed_tool_decisions,
+                                    final_prompt_size_chars: request_context_chars,
+                                    compaction_report: last_compaction_report,
+                                    hook_invocations,
+                                    provider_retry_count,
+                                    provider_error_count,
                                 },
-                                taint: taint_record_from_state(
-                                    self.taint_toggle,
-                                    self.taint_mode,
-                                    self.taint_digest_bytes,
-                                    &taint_state,
-                                ),
-                            };
+                                saw_token_usage,
+                                &total_token_usage,
+                                &taint_state,
+                            );
                         }
                     }
                 }
@@ -3130,34 +2954,26 @@ Fallback when native tool calls are unavailable:\n\
                                 EventKind::RunEnd,
                                 serde_json::json!({"exit_reason":"budget_exceeded"}),
                             );
-                            return AgentOutcome {
-                                run_id,
-                                started_at,
-                                finished_at: crate::trust::now_rfc3339(),
-                                exit_reason: AgentExitReason::BudgetExceeded,
-                                final_output: reason.clone(),
-                                error: Some(reason),
-                                messages,
-                                tool_calls: observed_tool_calls,
-                                tool_decisions: observed_tool_decisions,
-                                compaction_settings: self.compaction_settings.clone(),
-                                final_prompt_size_chars: request_context_chars,
-                                compaction_report: last_compaction_report,
-                                hook_invocations,
-                                provider_retry_count,
-                                provider_error_count,
-                                token_usage: if saw_token_usage {
-                                    Some(total_token_usage.clone())
-                                } else {
-                                    None
+                            return self.finalize_run_outcome(
+                                AgentOutcomeBuilderInput {
+                                    run_id,
+                                    started_at,
+                                    exit_reason: AgentExitReason::BudgetExceeded,
+                                    final_output: reason.clone(),
+                                    error: Some(reason),
+                                    messages,
+                                    tool_calls: observed_tool_calls,
+                                    tool_decisions: observed_tool_decisions,
+                                    final_prompt_size_chars: request_context_chars,
+                                    compaction_report: last_compaction_report,
+                                    hook_invocations,
+                                    provider_retry_count,
+                                    provider_error_count,
                                 },
-                                taint: taint_record_from_state(
-                                    self.taint_toggle,
-                                    self.taint_mode,
-                                    self.taint_digest_bytes,
-                                    &taint_state,
-                                ),
-                            };
+                                saw_token_usage,
+                                &total_token_usage,
+                                &taint_state,
+                            );
                         }
                         if let Some(reason) = check_and_consume_mcp_budget(
                             &self.tool_call_budget,
@@ -3187,34 +3003,26 @@ Fallback when native tool calls are unavailable:\n\
                                 EventKind::RunEnd,
                                 serde_json::json!({"exit_reason":"budget_exceeded"}),
                             );
-                            return AgentOutcome {
-                                run_id,
-                                started_at,
-                                finished_at: crate::trust::now_rfc3339(),
-                                exit_reason: AgentExitReason::BudgetExceeded,
-                                final_output: reason.clone(),
-                                error: Some(reason),
-                                messages,
-                                tool_calls: observed_tool_calls,
-                                tool_decisions: observed_tool_decisions,
-                                compaction_settings: self.compaction_settings.clone(),
-                                final_prompt_size_chars: request_context_chars,
-                                compaction_report: last_compaction_report,
-                                hook_invocations,
-                                provider_retry_count,
-                                provider_error_count,
-                                token_usage: if saw_token_usage {
-                                    Some(total_token_usage.clone())
-                                } else {
-                                    None
+                            return self.finalize_run_outcome(
+                                AgentOutcomeBuilderInput {
+                                    run_id,
+                                    started_at,
+                                    exit_reason: AgentExitReason::BudgetExceeded,
+                                    final_output: reason.clone(),
+                                    error: Some(reason),
+                                    messages,
+                                    tool_calls: observed_tool_calls,
+                                    tool_decisions: observed_tool_decisions,
+                                    final_prompt_size_chars: request_context_chars,
+                                    compaction_report: last_compaction_report,
+                                    hook_invocations,
+                                    provider_retry_count,
+                                    provider_error_count,
                                 },
-                                taint: taint_record_from_state(
-                                    self.taint_toggle,
-                                    self.taint_mode,
-                                    self.taint_digest_bytes,
-                                    &taint_state,
-                                ),
-                            };
+                                saw_token_usage,
+                                &total_token_usage,
+                                &taint_state,
+                            );
                         }
                         self.emit_event(
                             &run_id,
@@ -3384,34 +3192,26 @@ Fallback when native tool calls are unavailable:\n\
                                             EventKind::RunEnd,
                                             serde_json::json!({"exit_reason":"planner_error"}),
                                         );
-                                        return AgentOutcome {
-                                            run_id,
-                                            started_at,
-                                            finished_at: crate::trust::now_rfc3339(),
-                                            exit_reason: AgentExitReason::PlannerError,
-                                            final_output: reason.clone(),
-                                            error: Some(reason),
-                                            messages,
-                                            tool_calls: observed_tool_calls,
-                                            tool_decisions: observed_tool_decisions,
-                                            compaction_settings: self.compaction_settings.clone(),
-                                            final_prompt_size_chars: request_context_chars,
-                                            compaction_report: last_compaction_report,
-                                            hook_invocations,
-                                            provider_retry_count,
-                                            provider_error_count,
-                                            token_usage: if saw_token_usage {
-                                                Some(total_token_usage.clone())
-                                            } else {
-                                                None
+                                        return self.finalize_run_outcome(
+                                            AgentOutcomeBuilderInput {
+                                                run_id,
+                                                started_at,
+                                                exit_reason: AgentExitReason::PlannerError,
+                                                final_output: reason.clone(),
+                                                error: Some(reason),
+                                                messages,
+                                                tool_calls: observed_tool_calls,
+                                                tool_decisions: observed_tool_decisions,
+                                                final_prompt_size_chars: request_context_chars,
+                                                compaction_report: last_compaction_report,
+                                                hook_invocations,
+                                                provider_retry_count,
+                                                provider_error_count,
                                             },
-                                            taint: taint_record_from_state(
-                                                self.taint_toggle,
-                                                self.taint_mode,
-                                                self.taint_digest_bytes,
-                                                &taint_state,
-                                            ),
-                                        };
+                                            saw_token_usage,
+                                            &total_token_usage,
+                                            &taint_state,
+                                        );
                                     }
                                 }
                                 if let Some(error_code) = tool_result_error_code(&current_content) {
@@ -3615,34 +3415,26 @@ Fallback when native tool calls are unavailable:\n\
                                         EventKind::RunEnd,
                                         serde_json::json!({"exit_reason":"budget_exceeded"}),
                                     );
-                                    return AgentOutcome {
-                                        run_id,
-                                        started_at,
-                                        finished_at: crate::trust::now_rfc3339(),
-                                        exit_reason: AgentExitReason::BudgetExceeded,
-                                        final_output: reason.clone(),
-                                        error: Some(reason),
-                                        messages,
-                                        tool_calls: observed_tool_calls,
-                                        tool_decisions: observed_tool_decisions,
-                                        compaction_settings: self.compaction_settings.clone(),
-                                        final_prompt_size_chars: request_context_chars,
-                                        compaction_report: last_compaction_report,
-                                        hook_invocations,
-                                        provider_retry_count,
-                                        provider_error_count,
-                                        token_usage: if saw_token_usage {
-                                            Some(total_token_usage.clone())
-                                        } else {
-                                            None
+                                    return self.finalize_run_outcome(
+                                        AgentOutcomeBuilderInput {
+                                            run_id,
+                                            started_at,
+                                            exit_reason: AgentExitReason::BudgetExceeded,
+                                            final_output: reason.clone(),
+                                            error: Some(reason),
+                                            messages,
+                                            tool_calls: observed_tool_calls,
+                                            tool_decisions: observed_tool_decisions,
+                                            final_prompt_size_chars: request_context_chars,
+                                            compaction_report: last_compaction_report,
+                                            hook_invocations,
+                                            provider_retry_count,
+                                            provider_error_count,
                                         },
-                                        taint: taint_record_from_state(
-                                            self.taint_toggle,
-                                            self.taint_mode,
-                                            self.taint_digest_bytes,
-                                            &taint_state,
-                                        ),
-                                    };
+                                        saw_token_usage,
+                                        &total_token_usage,
+                                        &taint_state,
+                                    );
                                 }
                                 if let Some(reason) = check_and_consume_mcp_budget(
                                     &self.tool_call_budget,
@@ -3667,34 +3459,26 @@ Fallback when native tool calls are unavailable:\n\
                                         EventKind::RunEnd,
                                         serde_json::json!({"exit_reason":"budget_exceeded"}),
                                     );
-                                    return AgentOutcome {
-                                        run_id,
-                                        started_at,
-                                        finished_at: crate::trust::now_rfc3339(),
-                                        exit_reason: AgentExitReason::BudgetExceeded,
-                                        final_output: reason.clone(),
-                                        error: Some(reason),
-                                        messages,
-                                        tool_calls: observed_tool_calls,
-                                        tool_decisions: observed_tool_decisions,
-                                        compaction_settings: self.compaction_settings.clone(),
-                                        final_prompt_size_chars: request_context_chars,
-                                        compaction_report: last_compaction_report,
-                                        hook_invocations,
-                                        provider_retry_count,
-                                        provider_error_count,
-                                        token_usage: if saw_token_usage {
-                                            Some(total_token_usage.clone())
-                                        } else {
-                                            None
+                                    return self.finalize_run_outcome(
+                                        AgentOutcomeBuilderInput {
+                                            run_id,
+                                            started_at,
+                                            exit_reason: AgentExitReason::BudgetExceeded,
+                                            final_output: reason.clone(),
+                                            error: Some(reason),
+                                            messages,
+                                            tool_calls: observed_tool_calls,
+                                            tool_decisions: observed_tool_decisions,
+                                            final_prompt_size_chars: request_context_chars,
+                                            compaction_report: last_compaction_report,
+                                            hook_invocations,
+                                            provider_retry_count,
+                                            provider_error_count,
                                         },
-                                        taint: taint_record_from_state(
-                                            self.taint_toggle,
-                                            self.taint_mode,
-                                            self.taint_digest_bytes,
-                                            &taint_state,
-                                        ),
-                                    };
+                                        saw_token_usage,
+                                        &total_token_usage,
+                                        &taint_state,
+                                    );
                                 }
                                 let outcome =
                                     run_tool_once(&self.tool_rt, tc, self.mcp_registry.as_ref())
@@ -4084,42 +3868,34 @@ Fallback when native tool calls are unavailable:\n\
                             EventKind::RunEnd,
                             serde_json::json!({"exit_reason":"denied"}),
                         );
-                        return AgentOutcome {
-                            run_id,
-                            started_at,
-                            finished_at: crate::trust::now_rfc3339(),
-                            exit_reason: AgentExitReason::Denied,
-                            final_output: format!(
-                                "Tool call '{}' denied: {}",
-                                tc.name,
-                                if let Some(src) = &source {
-                                    format!("{} (source: {})", reason, src)
-                                } else {
-                                    reason.clone()
-                                }
-                            ),
-                            error: None,
-                            messages,
-                            tool_calls: observed_tool_calls,
-                            tool_decisions: observed_tool_decisions,
-                            compaction_settings: self.compaction_settings.clone(),
-                            final_prompt_size_chars: request_context_chars,
-                            compaction_report: last_compaction_report,
-                            hook_invocations,
-                            provider_retry_count,
-                            provider_error_count,
-                            token_usage: if saw_token_usage {
-                                Some(total_token_usage.clone())
-                            } else {
-                                None
+                        return self.finalize_run_outcome(
+                            AgentOutcomeBuilderInput {
+                                run_id,
+                                started_at,
+                                exit_reason: AgentExitReason::Denied,
+                                final_output: format!(
+                                    "Tool call '{}' denied: {}",
+                                    tc.name,
+                                    if let Some(src) = &source {
+                                        format!("{} (source: {})", reason, src)
+                                    } else {
+                                        reason.clone()
+                                    }
+                                ),
+                                error: None,
+                                messages,
+                                tool_calls: observed_tool_calls,
+                                tool_decisions: observed_tool_decisions,
+                                final_prompt_size_chars: request_context_chars,
+                                compaction_report: last_compaction_report,
+                                hook_invocations,
+                                provider_retry_count,
+                                provider_error_count,
                             },
-                            taint: taint_record_from_state(
-                                self.taint_toggle,
-                                self.taint_mode,
-                                self.taint_digest_bytes,
-                                &taint_state,
-                            ),
-                        };
+                            saw_token_usage,
+                            &total_token_usage,
+                            &taint_state,
+                        );
                     }
                     GateDecision::RequireApproval {
                         reason,
@@ -4319,55 +4095,47 @@ Fallback when native tool calls are unavailable:\n\
                             EventKind::RunEnd,
                             serde_json::json!({"exit_reason":"approval_required"}),
                         );
-                        return AgentOutcome {
-                            run_id,
-                            started_at,
-                            finished_at: crate::trust::now_rfc3339(),
-                            exit_reason: AgentExitReason::ApprovalRequired,
-                            final_output: if escalated {
-                                let src = if taint_state.last_sources.is_empty() {
-                                    "other".to_string()
+                        return self.finalize_run_outcome(
+                            AgentOutcomeBuilderInput {
+                                run_id,
+                                started_at,
+                                exit_reason: AgentExitReason::ApprovalRequired,
+                                final_output: if escalated {
+                                    let src = if taint_state.last_sources.is_empty() {
+                                        "other".to_string()
+                                    } else {
+                                        taint_state.last_sources.join("/")
+                                    };
+                                    format!(
+                                        "Approval required due to tainted content (source: {}). Run: localagent approve {} (or deny) then re-run.",
+                                        src, approval_id
+                                    )
                                 } else {
-                                    taint_state.last_sources.join("/")
-                                };
-                                format!(
-                                    "Approval required due to tainted content (source: {}). Run: localagent approve {} (or deny) then re-run.",
-                                    src, approval_id
-                                )
-                            } else {
-                                format!(
-                                    "Approval required: {} ({}){}. Run: localagent approve {} (or deny) then re-run.",
-                                    approval_id,
-                                    reason,
-                                    source
-                                        .as_ref()
-                                        .map(|s| format!(" [source: {}]", s))
-                                        .unwrap_or_default(),
-                                    approval_id
-                                )
+                                    format!(
+                                        "Approval required: {} ({}){}. Run: localagent approve {} (or deny) then re-run.",
+                                        approval_id,
+                                        reason,
+                                        source
+                                            .as_ref()
+                                            .map(|s| format!(" [source: {}]", s))
+                                            .unwrap_or_default(),
+                                        approval_id
+                                    )
+                                },
+                                error: None,
+                                messages,
+                                tool_calls: observed_tool_calls,
+                                tool_decisions: observed_tool_decisions,
+                                final_prompt_size_chars: request_context_chars,
+                                compaction_report: last_compaction_report,
+                                hook_invocations,
+                                provider_retry_count,
+                                provider_error_count,
                             },
-                            error: None,
-                            messages,
-                            tool_calls: observed_tool_calls,
-                            tool_decisions: observed_tool_decisions,
-                            compaction_settings: self.compaction_settings.clone(),
-                            final_prompt_size_chars: request_context_chars,
-                            compaction_report: last_compaction_report,
-                            hook_invocations,
-                            provider_retry_count,
-                            provider_error_count,
-                            token_usage: if saw_token_usage {
-                                Some(total_token_usage.clone())
-                            } else {
-                                None
-                            },
-                            taint: taint_record_from_state(
-                                self.taint_toggle,
-                                self.taint_mode,
-                                self.taint_digest_bytes,
-                                &taint_state,
-                            ),
-                        };
+                            saw_token_usage,
+                            &total_token_usage,
+                            &taint_state,
+                        );
                     }
                 }
             }
@@ -4380,34 +4148,27 @@ Fallback when native tool calls are unavailable:\n\
             serde_json::json!({"exit_reason":"max_steps"}),
         );
         let final_prompt_size_chars = context_size_chars(&messages);
-        AgentOutcome {
-            run_id,
-            started_at,
-            finished_at: crate::trust::now_rfc3339(),
-            exit_reason: AgentExitReason::MaxSteps,
-            final_output: "Max steps reached before the model produced a final answer.".to_string(),
-            error: None,
-            messages,
-            tool_calls: observed_tool_calls,
-            tool_decisions: observed_tool_decisions,
-            compaction_settings: self.compaction_settings.clone(),
-            final_prompt_size_chars,
-            compaction_report: last_compaction_report,
-            hook_invocations,
-            provider_retry_count,
-            provider_error_count,
-            token_usage: if saw_token_usage {
-                Some(total_token_usage.clone())
-            } else {
-                None
+        self.finalize_run_outcome(
+            AgentOutcomeBuilderInput {
+                run_id,
+                started_at,
+                exit_reason: AgentExitReason::MaxSteps,
+                final_output: "Max steps reached before the model produced a final answer."
+                    .to_string(),
+                error: None,
+                messages,
+                tool_calls: observed_tool_calls,
+                tool_decisions: observed_tool_decisions,
+                final_prompt_size_chars,
+                compaction_report: last_compaction_report,
+                hook_invocations,
+                provider_retry_count,
+                provider_error_count,
             },
-            taint: taint_record_from_state(
-                self.taint_toggle,
-                self.taint_mode,
-                self.taint_digest_bytes,
-                &taint_state,
-            ),
-        }
+            saw_token_usage,
+            &total_token_usage,
+            &taint_state,
+        )
     }
 }
 
