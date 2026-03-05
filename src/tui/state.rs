@@ -291,7 +291,7 @@ impl UiState {
                 }
             }
         }
-        if exit_reason.as_deref() == Some("ok")
+        if exit_reason.as_deref() != Some("cancelled")
             && !self.tool_calls.iter().any(|r| {
                 r.side_effects == "filesystem_write"
                     || r.tool_name == "apply_patch"
@@ -1906,6 +1906,34 @@ mod tests {
             1,
             EventKind::RunEnd,
             serde_json::json!({"exit_reason":"ok"}),
+        ));
+        assert_eq!(s.tool_calls.len(), 2);
+        assert_eq!(s.tool_calls[1].tool_name, "apply_patch");
+        assert_eq!(s.tool_calls[1].status, "OK:verified");
+        assert_eq!(s.tool_calls[1].ok, Some(true));
+    }
+
+    #[test]
+    fn run_end_synthesizes_verified_write_row_on_non_ok_exit_when_text_indicates_write() {
+        let mut s = UiState::new(10);
+        s.apply_event(&Event::new(
+            "r1".to_string(),
+            1,
+            EventKind::ToolCallDetected,
+            serde_json::json!({"tool_call_id":"tc1","tool":"read_file","side_effects":"filesystem_read"}),
+        ));
+        s.apply_event(&Event::new(
+            "r1".to_string(),
+            1,
+            EventKind::ToolExecEnd,
+            serde_json::json!({"tool_call_id":"tc1","tool":"read_file","ok":true,"content":"ok"}),
+        ));
+        s.assistant_text = "Applied requested file changes and verified: main.rs.".to_string();
+        s.apply_event(&Event::new(
+            "r1".to_string(),
+            1,
+            EventKind::RunEnd,
+            serde_json::json!({"exit_reason":"planner_error"}),
         ));
         assert_eq!(s.tool_calls.len(), 2);
         assert_eq!(s.tool_calls[1].tool_name, "apply_patch");
