@@ -14,6 +14,19 @@ cargo clippy -- -D warnings
 cargo test
 ```
 
+Or use the local coding harness:
+
+```bash
+# Fast local iteration (default)
+python scripts/dev_harness.py
+
+# Quick profile + only changed integration tests
+python scripts/dev_harness.py --changed-tests
+
+# CI-like local validation
+python scripts/dev_harness.py --profile full
+```
+
 ## Project Principles
 
 - Keep default safety posture unchanged unless explicitly discussed.
