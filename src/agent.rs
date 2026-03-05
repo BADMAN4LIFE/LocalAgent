@@ -3968,7 +3968,7 @@ Fallback when native tool calls are unavailable:\n\
                             escalated,
                             escalation_reason: escalation_reason.clone(),
                             result_ok: final_ok,
-                            result_content: content,
+                            result_content: content.clone(),
                             result_input_digest: Some(input_digest),
                             result_output_digest: Some(output_digest),
                             result_input_len: Some(input_len),
@@ -4010,6 +4010,53 @@ Fallback when native tool calls are unavailable:\n\
                             }),
                         );
                         messages.push(tool_msg);
+                        if !final_ok
+                            && tc.name == "write_file"
+                            && content.contains("write_file blocked for existing file")
+                        {
+                            let blocked_path = normalized_tool_path_from_args(tc)
+                                .unwrap_or_else(|| "<unknown>".to_string());
+                            let reason = format!(
+                                "implementation guard: write_file on '{blocked_path}' requires prior read_file on the same path"
+                            );
+                            self.emit_event(
+                                &run_id,
+                                step as u32,
+                                EventKind::Error,
+                                serde_json::json!({
+                                    "error": reason,
+                                    "source": "implementation_integrity_guard",
+                                    "failure_class": "E_RUNTIME_WRITEFILE_EXISTING_BLOCKED",
+                                    "path": blocked_path
+                                }),
+                            );
+                            self.emit_event(
+                                &run_id,
+                                step as u32,
+                                EventKind::RunEnd,
+                                serde_json::json!({"exit_reason":"planner_error"}),
+                            );
+                            return self.finalize_run_outcome(
+                                AgentOutcomeBuilderInput {
+                                    run_id,
+                                    started_at,
+                                    exit_reason: AgentExitReason::PlannerError,
+                                    final_output: String::new(),
+                                    error: Some(reason),
+                                    messages,
+                                    tool_calls: observed_tool_calls,
+                                    tool_decisions: observed_tool_decisions,
+                                    final_prompt_size_chars: request_context_chars,
+                                    compaction_report: last_compaction_report,
+                                    hook_invocations,
+                                    provider_retry_count,
+                                    provider_error_count,
+                                },
+                                saw_token_usage,
+                                &total_token_usage,
+                                &taint_state,
+                            );
+                        }
                         self.drain_external_operator_queue(&run_id, step as u32);
                         let (_, queue_interrupted) = self.deliver_operator_queue_at_boundary(
                             &run_id,
