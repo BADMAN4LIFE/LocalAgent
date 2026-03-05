@@ -580,7 +580,13 @@ async fn placeholder_only_implementation_output_is_rejected() {
         .run(
             "Improve the chess game in chess.html so that it works like a proper chess game.",
             vec![],
-            Vec::new(),
+            vec![Message {
+                role: Role::System,
+                content: Some("INTERNAL_FLAG:enforce_implementation_integrity_guard".to_string()),
+                tool_call_id: None,
+                tool_name: None,
+                tool_calls: None,
+            }],
         )
         .await;
     assert!(matches!(out.exit_reason, AgentExitReason::PlannerError));
