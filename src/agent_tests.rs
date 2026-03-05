@@ -61,54 +61,51 @@ fn split_streaming_shows_only_post_think_visible_text() {
 }
 
 #[test]
-fn step_completion_decision_executes_tools_when_tool_calls_present() {
-    let d = super::decide_step_completion(true, PlanToolEnforcementMode::Off, 0, 0);
-    assert!(matches!(d, super::StepCompletionDecision::ExecuteTools));
-}
-
-#[test]
-fn step_completion_decision_blocks_when_plan_step_pending() {
-    let d = super::decide_step_completion(false, PlanToolEnforcementMode::Hard, 0, 1);
-    assert!(matches!(
-        d,
-        super::StepCompletionDecision::ContinuePendingPlan
-    ));
-}
-
-#[test]
-fn step_completion_decision_finalizes_when_no_tools_and_no_pending_plan() {
-    let d = super::decide_step_completion(false, PlanToolEnforcementMode::Off, 0, 0);
-    assert!(matches!(d, super::StepCompletionDecision::Finalize));
-}
-
-#[test]
-fn runtime_requests_finalize_when_no_tools_and_no_pending_plan() {
-    assert!(super::runtime_requests_finalize(
-        false,
-        PlanToolEnforcementMode::Off,
-        0,
-        0
-    ));
-}
-
-#[test]
-fn runtime_requests_finalize_is_false_when_tools_present() {
-    assert!(!super::runtime_requests_finalize(
+fn runtime_completion_decision_executes_tools_when_tool_calls_present() {
+    let d = super::runtime_completion_decision(
         true,
         PlanToolEnforcementMode::Off,
         0,
-        0
+        0,
+        false,
+        false,
+        0,
+        1,
+    );
+    assert!(matches!(d, super::RuntimeCompletionDecision::ExecuteTools));
+}
+
+#[test]
+fn runtime_completion_decision_no_tool_call_but_not_complete_returns_continue() {
+    let d = super::runtime_completion_decision(
+        false,
+        PlanToolEnforcementMode::Hard,
+        0,
+        1,
+        false,
+        false,
+        0,
+        1,
+    );
+    assert!(matches!(
+        d,
+        super::RuntimeCompletionDecision::Continue { .. }
     ));
 }
 
 #[test]
-fn runtime_requests_finalize_is_false_when_plan_step_pending() {
-    assert!(!super::runtime_requests_finalize(
+fn runtime_completion_decision_runtime_complete_returns_finalize_ok() {
+    let d = super::runtime_completion_decision(
         false,
-        PlanToolEnforcementMode::Hard,
+        PlanToolEnforcementMode::Off,
         0,
-        1
-    ));
+        0,
+        false,
+        false,
+        1,
+        1,
+    );
+    assert!(matches!(d, super::RuntimeCompletionDecision::FinalizeOk));
 }
 
 #[async_trait]

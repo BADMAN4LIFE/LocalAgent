@@ -57,10 +57,18 @@ pub enum AgentExitReason {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum StepCompletionDecision {
+enum RuntimeCompletionDecision {
     ExecuteTools,
-    ContinuePendingPlan,
-    Finalize,
+    Continue {
+        reason_code: &'static str,
+        corrective_instruction: &'static str,
+    },
+    FinalizeOk,
+    FinalizeError {
+        reason: &'static str,
+        source: &'static str,
+        failure_class: &'static str,
+    },
 }
 
 pub fn sanitize_user_visible_output(raw: &str) -> String {
@@ -106,39 +114,66 @@ fn injected_messages_enforce_implementation_integrity_guard(messages: &[Message]
     })
 }
 
-fn decide_step_completion(
+fn runtime_completion_decision(
     has_tool_calls: bool,
     plan_tool_enforcement: PlanToolEnforcementMode,
     active_plan_step_idx: usize,
     plan_step_constraints_len: usize,
-) -> StepCompletionDecision {
+    tool_only_phase_active: bool,
+    enforce_implementation_integrity_guard: bool,
+    observed_tool_calls_len: usize,
+    blocked_attempt_count_next: u32,
+) -> RuntimeCompletionDecision {
     if has_tool_calls {
-        return StepCompletionDecision::ExecuteTools;
+        return RuntimeCompletionDecision::ExecuteTools;
     }
     if !matches!(plan_tool_enforcement, PlanToolEnforcementMode::Off)
         && plan_step_constraints_len > 0
         && active_plan_step_idx < plan_step_constraints_len
     {
-        return StepCompletionDecision::ContinuePendingPlan;
+        if blocked_attempt_count_next >= 2 {
+            return RuntimeCompletionDecision::FinalizeError {
+                reason:
+                    "model repeatedly attempted to halt before completing required planner steps",
+                source: "runtime_completion_policy",
+                failure_class: "E_RUNTIME_COMPLETION_PENDING_PLAN",
+            };
+        }
+        return RuntimeCompletionDecision::Continue {
+            reason_code: "pending_plan_step",
+            corrective_instruction:
+                "Continue execution. Do not finalize yet. Complete the pending planner step and return the next tool call.",
+        };
     }
-    StepCompletionDecision::Finalize
-}
-
-fn runtime_requests_finalize(
-    has_tool_calls: bool,
-    plan_tool_enforcement: PlanToolEnforcementMode,
-    active_plan_step_idx: usize,
-    plan_step_constraints_len: usize,
-) -> bool {
-    matches!(
-        decide_step_completion(
-            has_tool_calls,
-            plan_tool_enforcement,
-            active_plan_step_idx,
-            plan_step_constraints_len,
-        ),
-        StepCompletionDecision::Finalize
-    )
+    if tool_only_phase_active {
+        if blocked_attempt_count_next >= 2 {
+            return RuntimeCompletionDecision::FinalizeError {
+                reason: "model repeatedly attempted to finalize during tool-only phase without a tool call",
+                source: "runtime_completion_policy",
+                failure_class: "E_RUNTIME_COMPLETION_TOOL_ONLY",
+            };
+        }
+        return RuntimeCompletionDecision::Continue {
+            reason_code: "tool_only_requires_tool_call",
+            corrective_instruction:
+                "Tool-only phase active. Return exactly one valid tool call and no prose.",
+        };
+    }
+    if enforce_implementation_integrity_guard && observed_tool_calls_len == 0 {
+        if blocked_attempt_count_next >= 2 {
+            return RuntimeCompletionDecision::FinalizeError {
+                reason: "implementation guard: file-edit task finalized without any tool calls",
+                source: "implementation_integrity_guard",
+                failure_class: "E_RUNTIME_COMPLETION_IMPLEMENTATION_NO_TOOLS",
+            };
+        }
+        return RuntimeCompletionDecision::Continue {
+            reason_code: "implementation_requires_tool_calls",
+            corrective_instruction:
+                "Implementation task requires concrete tool-backed changes. Read/edit files with tools and then continue.",
+        };
+    }
+    RuntimeCompletionDecision::FinalizeOk
 }
 
 impl AgentExitReason {
@@ -819,7 +854,7 @@ Fallback when native tool calls are unavailable:\n\
         let mut saw_token_usage = false;
         let mut taint_state = TaintState::new();
         let mut active_plan_step_idx: usize = 0;
-        let mut blocked_halt_count: u32 = 0;
+        let mut blocked_runtime_completion_count: u32 = 0;
         let mut blocked_control_envelope_count: u32 = 0;
         let mut blocked_tool_only_count: u32 = 0;
         let mut tool_only_phase_active = prompt_requires_tool_only(user_prompt);
@@ -1341,14 +1376,9 @@ Fallback when native tool calls are unavailable:\n\
                 );
             }
             let has_actionable_tool_calls = !resp.tool_calls.is_empty();
-            let runtime_attempts_finalize = runtime_requests_finalize(
-                has_actionable_tool_calls,
-                self.plan_tool_enforcement,
-                active_plan_step_idx,
-                self.plan_step_constraints.len(),
-            );
+            let model_signaled_finalize = !has_actionable_tool_calls;
             if tool_only_phase_active
-                && runtime_attempts_finalize
+                && model_signaled_finalize
                 && !resp
                     .assistant
                     .content
@@ -1441,7 +1471,7 @@ Fallback when native tool calls are unavailable:\n\
             if !matches!(self.plan_tool_enforcement, PlanToolEnforcementMode::Off)
                 && !self.plan_step_constraints.is_empty()
                 && worker_step_status.is_none()
-                && runtime_attempts_finalize
+                && model_signaled_finalize
             {
                 blocked_control_envelope_count = blocked_control_envelope_count.saturating_add(1);
                 self.emit_event(
@@ -1562,7 +1592,7 @@ Fallback when native tool calls are unavailable:\n\
                                 "status": step_status.status
                             }),
                         );
-                        blocked_halt_count = 0;
+                        blocked_runtime_completion_count = 0;
                         step_retry_counts.remove(&current_step_id);
                         if let Some(next) = &step_status.next_step_id {
                             if next == "final" {
@@ -1794,32 +1824,51 @@ Fallback when native tool calls are unavailable:\n\
                 taint_state.mark_assistant_context_tainted(idx);
             }
 
-            match decide_step_completion(
+            let completion_decision = runtime_completion_decision(
                 has_actionable_tool_calls,
                 self.plan_tool_enforcement,
                 active_plan_step_idx,
                 self.plan_step_constraints.len(),
-            ) {
-                StepCompletionDecision::ContinuePendingPlan => {
-                    let step_constraint = self.plan_step_constraints[active_plan_step_idx].clone();
-                    blocked_halt_count = blocked_halt_count.saturating_add(1);
-                    let reason = format!(
+                tool_only_phase_active,
+                enforce_implementation_integrity_guard,
+                observed_tool_calls.len(),
+                blocked_runtime_completion_count.saturating_add(1),
+            );
+            match completion_decision {
+                RuntimeCompletionDecision::Continue {
+                    reason_code,
+                    corrective_instruction,
+                } => {
+                    blocked_runtime_completion_count =
+                        blocked_runtime_completion_count.saturating_add(1);
+                    let mut source = "runtime_completion_policy";
+                    let mut error_text = corrective_instruction.to_string();
+                    if reason_code == "pending_plan_step"
+                        && !matches!(self.plan_tool_enforcement, PlanToolEnforcementMode::Off)
+                        && active_plan_step_idx < self.plan_step_constraints.len()
+                    {
+                        let step_constraint =
+                            self.plan_step_constraints[active_plan_step_idx].clone();
+                        error_text = format!(
                             "premature finalization blocked: plan step {} still pending (allowed tools: {})",
                             step_constraint.step_id,
-                        if step_constraint.intended_tools.is_empty() {
-                            "none".to_string()
-                        } else {
-                            step_constraint.intended_tools.join(", ")
-                        }
-                    );
+                            if step_constraint.intended_tools.is_empty() {
+                                "none".to_string()
+                            } else {
+                                step_constraint.intended_tools.join(", ")
+                            }
+                        );
+                        source = "plan_halt_guard";
+                    }
                     self.emit_event(
                         &run_id,
                         step as u32,
                         EventKind::Error,
                         serde_json::json!({
-                            "error": reason,
-                            "source": "plan_halt_guard",
-                            "blocked_halt_count": blocked_halt_count
+                            "error": error_text,
+                            "source": source,
+                            "reason_code": reason_code,
+                            "blocked_count": blocked_runtime_completion_count
                         }),
                     );
                     self.emit_event(
@@ -1827,42 +1876,17 @@ Fallback when native tool calls are unavailable:\n\
                         step as u32,
                         EventKind::StepBlocked,
                         serde_json::json!({
-                            "step_id": step_constraint.step_id,
-                            "reason": "premature_finalization_blocked",
-                            "blocked_halt_count": blocked_halt_count
+                            "reason": reason_code,
+                            "blocked_count": blocked_runtime_completion_count
                         }),
                     );
-                    if blocked_halt_count >= 2 {
-                        self.emit_event(
-                            &run_id,
-                            step as u32,
-                            EventKind::RunEnd,
-                            serde_json::json!({"exit_reason":"planner_error"}),
-                        );
-                        return self.finalize_run_outcome(
-                            AgentOutcomeBuilderInput {
-                                run_id,
-                                started_at,
-                                exit_reason: AgentExitReason::PlannerError,
-                                final_output: String::new(),
-                                error: Some("model repeatedly attempted to halt before completing required planner steps".to_string()),
-                                messages,
-                                tool_calls: observed_tool_calls,
-                                tool_decisions: observed_tool_decisions,
-                                final_prompt_size_chars: request_context_chars,
-                                compaction_report: last_compaction_report,
-                                hook_invocations,
-                                provider_retry_count,
-                                provider_error_count,
-                            },
-                            saw_token_usage,
-                            &total_token_usage,
-                            &taint_state,
-                        );
-                    }
-                    messages.push(Message {
-                        role: Role::Developer,
-                        content: Some(format!(
+                    let corrective_message = if reason_code == "pending_plan_step"
+                        && !matches!(self.plan_tool_enforcement, PlanToolEnforcementMode::Off)
+                        && active_plan_step_idx < self.plan_step_constraints.len()
+                    {
+                        let step_constraint =
+                            self.plan_step_constraints[active_plan_step_idx].clone();
+                        format!(
                             "Continue execution. Do not finalize yet. Complete pending step {} using only intended tools ({}), then return the next tool call.",
                             step_constraint.step_id,
                             if step_constraint.intended_tools.is_empty() {
@@ -1870,14 +1894,63 @@ Fallback when native tool calls are unavailable:\n\
                             } else {
                                 step_constraint.intended_tools.join(", ")
                             }
-                        )),
+                        )
+                    } else {
+                        corrective_instruction.to_string()
+                    };
+                    messages.push(Message {
+                        role: Role::Developer,
+                        content: Some(corrective_message),
                         tool_call_id: None,
                         tool_name: None,
                         tool_calls: None,
                     });
                     continue;
                 }
-                StepCompletionDecision::Finalize => {
+                RuntimeCompletionDecision::FinalizeError {
+                    reason,
+                    source,
+                    failure_class,
+                } => {
+                    self.emit_event(
+                        &run_id,
+                        step as u32,
+                        EventKind::Error,
+                        serde_json::json!({
+                            "error": reason,
+                            "source": source,
+                            "failure_class": failure_class
+                        }),
+                    );
+                    self.emit_event(
+                        &run_id,
+                        step as u32,
+                        EventKind::RunEnd,
+                        serde_json::json!({"exit_reason":"planner_error"}),
+                    );
+                    return self.finalize_run_outcome(
+                        AgentOutcomeBuilderInput {
+                            run_id,
+                            started_at,
+                            exit_reason: AgentExitReason::PlannerError,
+                            final_output: String::new(),
+                            error: Some(reason.to_string()),
+                            messages,
+                            tool_calls: observed_tool_calls,
+                            tool_decisions: observed_tool_decisions,
+                            final_prompt_size_chars: request_context_chars,
+                            compaction_report: last_compaction_report,
+                            hook_invocations,
+                            provider_retry_count,
+                            provider_error_count,
+                        },
+                        saw_token_usage,
+                        &total_token_usage,
+                        &taint_state,
+                    );
+                }
+                RuntimeCompletionDecision::FinalizeOk => {
+                    blocked_runtime_completion_count = 0;
                     let (queue_delivered, queue_interrupted) = self
                         .deliver_operator_queue_at_boundary(
                             &run_id,
@@ -2117,7 +2190,9 @@ Fallback when native tool calls are unavailable:\n\
                         &taint_state,
                     );
                 }
-                StepCompletionDecision::ExecuteTools => {}
+                RuntimeCompletionDecision::ExecuteTools => {
+                    blocked_runtime_completion_count = 0;
+                }
             }
 
             for tc in &resp.tool_calls {
