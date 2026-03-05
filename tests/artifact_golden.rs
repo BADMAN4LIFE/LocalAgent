@@ -60,6 +60,8 @@ fn build_run_cli_config() -> RunCliConfig {
         max_shell_calls: 2,
         max_network_calls: 0,
         max_browser_calls: 0,
+        tool_exec_timeout_ms: 30_000,
+        post_write_verify_timeout_ms: 5_000,
         approval_mode: "interrupt".to_string(),
         auto_approve_scope: "run".to_string(),
         approval_key: "v1".to_string(),
